@@ -1,3 +1,5 @@
+export type Currency = 'TRY' | 'GBP' | 'USD'
+
 export type Color =
   | 'brown' | 'lightblue' | 'pink' | 'orange'
   | 'red' | 'yellow' | 'green' | 'darkblue'
@@ -27,8 +29,9 @@ export type Property = SpaceBase & {
     hotel: number
   }
   houseCost: number
-  hotelCost: number // often same as houseCost
+  hotelCost: number
   mortgage: number
+  mortgaged?: boolean
 }
 
 export type Station = SpaceBase & {
@@ -36,6 +39,7 @@ export type Station = SpaceBase & {
   price: number
   rentByOwned: [number, number, number, number]
   mortgage: number
+  mortgaged?: boolean
 }
 
 export type Utility = SpaceBase & {
@@ -43,6 +47,7 @@ export type Utility = SpaceBase & {
   price: number
   rentMultiplier: { one: number; two: number } // dice sum * multiplier
   mortgage: number
+  mortgaged?: boolean
 }
 
 export type Tax = SpaceBase & { type: 'TAX'; amount: number }
@@ -50,8 +55,8 @@ export type Tax = SpaceBase & { type: 'TAX'; amount: number }
 export type BoardSpace = SpaceBase | Property | Station | Utility | Tax
 
 export type Board = {
-  currency: 'TRY'
-  goAmount: number // 200 by default
+  currency: Currency
+  goAmount: number // 200 by default (rules)
   spaces: BoardSpace[] // length 40
 }
 
@@ -60,14 +65,37 @@ export type Player = {
   name: string
   cash: number
   position: number // 0..39
-  jailTurns: number
   inJail: boolean
+  jailTurns: number // number of turns spent in jail trying for doubles (0..3)
   getOutOfJail: number // held cards
   bankrupt: boolean
-  properties: number[] // space ids
+  properties: number[] // owned space ids (PROPERTY/STATION/UTILITY)
   houses: Record<number, 0|1|2|3|4>
   hotels: Record<number, 0|1>
 }
+
+export type DeckCard =
+  | { id: string; kind: 'money'; amount: number; text: string }
+  | { id: string; kind: 'move'; to: number; passGo?: boolean; text: string }
+  | { id: string; kind: 'gotojail'; text: string }
+  | { id: string; kind: 'getoutofjail'; text: string }
+// (You can add repairs/fees-by-building later)
+
+export type Auction = {
+  active: boolean
+  spaceId: number | null
+  participants: string[] // player ids still in
+  highestBid: number
+  highestBidder: string | null
+  minIncrement: number
+}
+
+export type Bank = {
+  houses: number // 32
+  hotels: number // 12
+}
+
+export type Dice = { d1: number; d2: number; sum: number; isDouble: boolean }
 
 export type RoomState = {
   roomId: string
@@ -76,7 +104,10 @@ export type RoomState = {
   turnIndex: number
   order: string[]
   players: Record<string, Player>
-  deck: { chance: number[]; community: number[] }
+  deck: { chance: DeckCard[]; community: DeckCard[] }
+  bank: Bank
+  auction: Auction
+  lastDice: Dice | null
 }
 
 export type ClientEvent =
@@ -84,7 +115,21 @@ export type ClientEvent =
   | { type: 'start' }
   | { type: 'roll' }
   | { type: 'buy' }
+  | { type: 'decline' }               // triggers auction per rules
   | { type: 'endTurn' }
+  | { type: 'bid'; amount: number }
+  | { type: 'passBid' }
+  | { type: 'payJail' }
+  | { type: 'useGetOutCard' }
+  | { type: 'buildHouse'; spaceId: number }
+  | { type: 'sellHouse'; spaceId: number }
+  | { type: 'buyHotel'; spaceId: number }
+  | { type: 'sellHotel'; spaceId: number }
+  | { type: 'mortgage'; spaceId: number }
+  | { type: 'unmortgage'; spaceId: number }
+  // NEW:
+  | { type: 'readyToggle' }
+  | { type: 'kick'; playerId: string }
 
 export type ServerEvent =
   | { type: 'state'; state: RoomState }
