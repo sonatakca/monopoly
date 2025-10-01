@@ -18,12 +18,14 @@ io.on('connection', (socket) => {
 
   socket.on('event', (evt: ClientEvent) => {
     if (evt.type === 'join') {
-      roomId = evt.roomId
-      name = evt.name
-      rooms[roomId] ??= createRoom(roomId)
-      addPlayer(rooms[roomId], socket.id, name)
-      socket.join(roomId)
-      io.to(roomId).emit('event', { type: 'state', state: rooms[roomId] } as ServerEvent)
+      const safeRoom = evt.roomId.trim() || 'oda-1'
+      const safeName = evt.name.trim() || 'Oyuncu'
+      roomId = safeRoom
+      name = safeName
+      rooms[safeRoom] ??= createRoom(safeRoom)
+      addPlayer(rooms[safeRoom], socket.id, safeName)
+      socket.join(safeRoom)
+      io.to(safeRoom).emit('event', { type: 'state', state: rooms[safeRoom] } as ServerEvent)
       return
     }
 

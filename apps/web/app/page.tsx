@@ -46,6 +46,8 @@ export default function Home() {
   function joinRoom() {
     const safeName = name.trim() || 'Oyuncu'
     const safeRoom = roomId.trim() || 'oda-1'
+    setName(safeName)
+    setRoomId(safeRoom)
     send({ type: 'join', name: safeName, roomId: safeRoom })
   }
 
