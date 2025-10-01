@@ -1,0 +1,28 @@
+# workspaces
+node_modules/
+**/node_modules/
+
+# builds
+.next/
+**/.next/
+dist/
+build/
+out/
+coverage/
+
+# package manager
+.pnp.*
+.pnpm-store/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env
+.env*
+!.env.example
+
+# editor/OS noise
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
