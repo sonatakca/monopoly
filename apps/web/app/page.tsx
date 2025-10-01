@@ -17,8 +17,13 @@ export default function Home() {
       if (evt.type === 'error') alert(evt.text)
     }
     socket.on('event', handleEvent)
-    const handleConnect = () => setConnected(true)
-    const handleDisconnect = () => setConnected(false)
+    const handleConnect = () => {
+      setConnected(true)
+    }
+    const handleDisconnect = () => {
+      setConnected(false)
+      setState(null)
+    }
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
     return () => {
@@ -53,7 +58,11 @@ export default function Home() {
         <button onClick={()=>send({ type: 'start' })} disabled={!joined || started}>Başlat</button>
       </section>
 
-      {!joined && (
+      {!connected && (
+        <p style={{ marginBottom: 12 }}>Sunucuya bağlanılıyor...</p>
+      )}
+
+      {connected && !joined && (
         <p style={{ marginBottom: 12 }}>Oyuna başlamak için önce odaya katılmalısın.</p>
       )}
 
