@@ -1,8 +1,14 @@
-'use client'
+"use client"
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
-export type RoomSummary = { roomId: string; started: boolean; playerCount: number; readyCount: number; players: { id: string; name: string }[] }
+export type RoomSummary = {
+  roomId: string
+  started: boolean
+  playerCount: number
+  readyCount: number
+  players: { id: string; name: string }[]
+}
 
 export default function RoomsList({
   onSelect,
@@ -15,7 +21,7 @@ export default function RoomsList({
   me: any
   apiBase?: string
 }) {
-  const API = apiBase || (typeof window !== 'undefined' && (window as any).NEXT_PUBLIC_API_URL) || 'http://127.0.0.1:8787'
+  const API = apiBase || (process.env.NEXT_PUBLIC_API_URL as string) || 'http://127.0.0.1:8787'
   const [rooms, setRooms] = useState<RoomSummary[]>([])
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -64,7 +70,7 @@ export default function RoomsList({
               </div>
               <div className="player-meta">Oyuncular: {r.playerCount} • Hazır: {r.readyCount}</div>
               <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                {r.players.map(p => (
+                {r.players.map((p) => (
                   <span key={p.id} className="muted" style={{ fontSize: 12, padding: '2px 6px', border: '1px dashed var(--border)', borderRadius: 6 }}>{p.name}</span>
                 ))}
               </div>

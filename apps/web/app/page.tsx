@@ -6,6 +6,7 @@ import type { ServerEvent, ClientEvent, RoomState } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
 import DiceGLB from './components/DiceGLB'
 import RoomsList from './components/RoomsList'
+import './preload-assets'
 const NAME_KEY = 'monopoly:name'
 const PLACE_KEY = 'monopoly:placements'
 

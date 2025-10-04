@@ -13,8 +13,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="brand">
               <div className="brand-badge" />
               <div>
-                <div className="brand-title">MonopolyTR</div>
-                <div className="brand-subtle">Minimal ve modern arayüz</div>
+                <div className="brand-title">Monopoly</div>
+                <div className="brand-subtle">arkadaşlarınla Monopoly oyna</div>
               </div>
             </div>
             <div className="spacer" />

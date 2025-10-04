@@ -62,7 +62,7 @@ const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#e
 /* Board geometry */
 function BoardBody({ size = 10, thickness = 0.25, color = '#000000' }: { size?: number; thickness?: number; color?: string }) {
     return (
-        <mesh position={[0, -thickness / 2, 0]} castShadow receiveShadow>
+        <mesh position={[0, -thickness / 2, 0]} receiveShadow>
             <boxGeometry args={[size, thickness, size]} />
             <meshStandardMaterial color={color} roughness={0.6} metalness={0.0} />
         </mesh>
@@ -354,11 +354,7 @@ function Board3D({
                 {/* Board */}
                 <BoardBody size={worldSize} thickness={boardThickness} color={boardBodyColor} />
                 <BoardRim size={worldSize} innerSize={topSize} height={rimHeight} color={rimColor} y={0.006} />
-                {/* Invisible ground that only receives soft shadows, matching site minimalism */}
-                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -Math.max(boardThickness * 0.6, 0.18), 0]} receiveShadow>
-                    <planeGeometry args={[worldSize * 3, worldSize * 3]} />
-                    <shadowMaterial transparent opacity={0.22} />
-                </mesh>
+                {/* Optional ground receiver removed to avoid large wedges on some devices */}
                 <Suspense fallback={null}>
                     <ClickableBoardPlane size={topSize} url={boardImageUrl || '/board.png'} y={0.002} />
                 </Suspense>
