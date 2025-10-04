@@ -1,7 +1,7 @@
 'use client'
-import { Canvas, useFrame, useLoader, useThree, ThreeEvent } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
-import { Suspense, memo, useEffect, useMemo, useRef } from 'react'
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
+import { Html, OrbitControls } from '@react-three/drei'
+import { Suspense, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
 import type { Player } from '../../../packages/shared/types'
@@ -24,10 +24,10 @@ type TokenModel = {
 export type CameraPreset = { pos: [number, number, number]; target: [number, number, number]; fov?: number }
 type PathDirection = 'clockwise' | 'counterclockwise'
 export type PlacementOverrides = { [tileIndex: number]: Array<[number, number] | null> }
-type EditPlacement = { enabled: boolean; tileIndex?: number; slot?: number }
 
 type Props = {
     players?: Record<string, Player>
+    order?: string[]
     worldSize?: number
     indexRotation?: 0 | 90 | 180 | 270
     pathDirection?: PathDirection
@@ -49,21 +49,17 @@ type Props = {
     presets?: CameraPreset[]
     presetIndex?: number
     cameraLerp?: number
-    devCameraHUD?: boolean
-    onPresetChange?: (index: number, preset: CameraPreset) => void
     waitingMode?: boolean
     waitingPreset?: CameraPreset
 
     placementOverrides?: PlacementOverrides
     placementAliases?: Record<number, number>
-    editPlacement?: EditPlacement
-    onPlace?: (tileIndex: number, slot: number, x: number, z: number) => void
+    children?: ReactNode
 }
 
-const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#0ea5e9', '#64748b']
-const colorFor = (i: number) => TOKEN_COLORS[i % TOKEN_COLORS.length]
+const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
 
-/* ---------------- Board geometry ---------------- */
+/* Board geometry */
 function BoardBody({ size = 10, thickness = 0.25, color = '#000000' }: { size?: number; thickness?: number; color?: string }) {
     return (
         <mesh position={[0, -thickness / 2, 0]} castShadow receiveShadow>
@@ -90,10 +86,9 @@ function BoardRim({ size = 10, innerSize = 9.88, height = 0.04, color = '#000', 
     )
 }
 
-/** Textured top plane that receives clicks and exposes e.point */
 function ClickableBoardPlane({
-    size, url, y, onClick,
-}: { size: number; url: string; y: number; onClick: (e: ThreeEvent<MouseEvent>) => void }) {
+    size, url, y,
+}: { size: number; url: string; y: number }) {
     const texture = useLoader(THREE.TextureLoader, url)
     const { gl } = useThree()
     const maxAniso = gl.capabilities.getMaxAnisotropy()
@@ -101,39 +96,14 @@ function ClickableBoardPlane({
     texture.minFilter = THREE.LinearMipmapLinearFilter
     texture.magFilter = THREE.LinearFilter
     return (
-        <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, y, 0]}
-            receiveShadow
-            onPointerDown={onClick}
-        >
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} receiveShadow>
             <planeGeometry args={[size, size]} />
             <meshStandardMaterial map={texture} roughness={0.9} metalness={0.0} />
         </mesh>
     )
 }
 
-/* ---------------- Tokens ---------------- */
-function SphereToken({ name, color, position, showLabel }: {
-    name: string; color: string; position: [number, number, number]; showLabel?: boolean
-}) {
-    return (
-        <group position={position}>
-            <mesh castShadow>
-                <sphereGeometry args={[0.18, 24, 24]} />
-                <meshStandardMaterial color={color} metalness={0.05} roughness={0.6} />
-            </mesh>
-            {showLabel && (
-                <Html center distanceFactor={12}>
-                    <div style={{ background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }}>{name}</div>
-                </Html>
-            )}
-        </group>
-    )
-}
-function STLToken({ name, cfg, position, showLabel }: {
-    name: string; cfg: TokenModel; position: [number, number, number]; showLabel?: boolean
-}) {
+function STLToken({ cfg, position }: { cfg: TokenModel; position: [number, number, number] }) {
     const geom = useLoader(STLLoader, cfg.url) as THREE.BufferGeometry
     const geometry = geom.clone()
     geometry.computeVertexNormals()
@@ -146,16 +116,11 @@ function STLToken({ name, cfg, position, showLabel }: {
             <mesh geometry={geometry} castShadow receiveShadow>
                 <meshStandardMaterial color={color} metalness={0.1} roughness={0.6} />
             </mesh>
-            {showLabel && (
-                <Html center distanceFactor={12}>
-                    <div style={{ background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }}>{name}</div>
-                </Html>
-            )}
         </group>
     )
 }
 
-/* ---------------- Tile mapping & slots ---------------- */
+/* Position helper (fallback) */
 type Edge = 'bottom' | 'left' | 'top' | 'right' | 'corner'
 function baseTileForIndex(idx: number, dir: PathDirection): { row: number; col: number; edge: Edge } {
     const i = dir === 'clockwise' ? idx : ((40 - idx) % 40)
@@ -212,34 +177,13 @@ function positionFor(index: number, slot: number, S: number, dir: PathDirection,
     else if (edge === 'right') { lx = -v * d; lz = u * w }
     return [cx + lx, cz + lz]
 }
-function detectTileIndex(x: number, z: number, S: number, _dir: PathDirection, rot: 0 | 90 | 180 | 270): number | null {
-    const step = S / 11
-    let col = Math.round(x / step + 6)
-    let row = Math.round(6 - z / step)
-    const unrot = (() => {
-        const cx = 6, cy = 6
-        const X = col - cx, Y = row - cy
-        let xr = X, yr = Y
-        if (rot === 90) { xr = Y; yr = -X }
-        if (rot === 180) { xr = -X; yr = -Y }
-        if (rot === 270) { xr = -Y; yr = X }
-        return { row: cy + yr, col: cx + xr }
-    })()
-    row = unrot.row; col = unrot.col
-    if (row === 11 && col === 11) return 0
-    if (row === 11 && col === 1) return 10
-    if (row === 1 && col === 1) return 20
-    if (row === 1 && col === 11) return 30
-    if (row === 11 && col >= 2 && col <= 10) return 11 - col
-    if (col === 1 && row >= 2 && row <= 10) return 22 - row
-    if (row === 1 && col >= 2 && col <= 10) return col + 19
-    if (col === 11 && row >= 2 && row <= 10) return row + 29
-    return null
-}
 
-/* ---------------- Camera rig ---------------- */
-function CameraRig({ preset, lerp = 0.08, instant = false, targetOutRef }: {
-    preset: CameraPreset; lerp?: number; instant?: boolean; targetOutRef?: React.MutableRefObject<THREE.Vector3>
+/* Camera rig */
+function CameraRig({ preset, lerp = 0.08, instant = false, suspend = false }: {
+    preset: { pos: [number, number, number]; target: [number, number, number]; fov?: number }
+    lerp?: number
+    instant?: boolean
+    suspend?: boolean
 }) {
     const { camera } = useThree()
     const internalTarget = useRef(new THREE.Vector3(...preset.target))
@@ -249,16 +193,15 @@ function CameraRig({ preset, lerp = 0.08, instant = false, targetOutRef }: {
         desiredPos.current.set(...preset.pos)
         internalTarget.current.set(...preset.target)
         desiredFov.current = preset.fov ?? camera.fov
-        if (targetOutRef) targetOutRef.current.copy(internalTarget.current)
         if (instant) {
             camera.position.set(...preset.pos)
             camera.fov = desiredFov.current
             camera.updateProjectionMatrix()
             camera.lookAt(internalTarget.current)
         }
-    }, [preset, camera.fov, instant, camera, targetOutRef])
+    }, [preset, camera.fov, instant, camera])
     useFrame(() => {
-        if (instant) return
+        if (instant || suspend) return
         camera.position.lerp(desiredPos.current, lerp)
         camera.fov += (desiredFov.current - camera.fov) * lerp
         camera.updateProjectionMatrix()
@@ -267,9 +210,10 @@ function CameraRig({ preset, lerp = 0.08, instant = false, targetOutRef }: {
     return null
 }
 
-/* ---------------- Main ---------------- */
+/* Main */
 function Board3D({
     players = {},
+    order = [],
     worldSize = 10,
     indexRotation = 0,
     pathDirection = 'clockwise',
@@ -278,8 +222,8 @@ function Board3D({
     lighting,
     models = {},
     boardImageUrl = '/board.png',
-    showLabels = true,
-    showFallbackSpheres = true,
+    showLabels = false,
+    showFallbackSpheres = false,
 
     boardThickness = 0.25,
     boardBodyColor = '#000000',
@@ -290,17 +234,27 @@ function Board3D({
     presets,
     presetIndex = 0,
     cameraLerp = 0.08,
-    devCameraHUD = false,
-    onPresetChange,
     waitingMode = false,
     waitingPreset = { pos: [0, 12, 0], target: [0, 0, 0], fov: 30 },
 
     placementOverrides,
-    placementAliases = { 30: 10 }, // default: Go To Jail uses Jail’s placements
-    editPlacement,
-    onPlace,
+    placementAliases = { 30: 10 },
+    children,
 }: Props) {
-    const plist = useMemo(() => Object.values(players || {}), [players])
+    const plist = useMemo(() => {
+        const arr = order.map(id => players[id]).filter(Boolean) as Player[]
+        return arr.length ? arr : Object.values(players || {})
+    }, [players, order])
+
+    const occupancy = useMemo(() => {
+        const map = new Map<number, string[]>()
+        for (const p of plist) {
+            const tile = ((p.position + (displayOffset % 40) + 40) % 40)
+            if (!map.has(tile)) map.set(tile, [])
+            map.get(tile)!.push(p.id)
+        }
+        return map
+    }, [plist, displayOffset])
 
     const L = {
         ambient: lighting?.ambient ?? 0.3,
@@ -314,33 +268,34 @@ function Board3D({
     const inset = Math.max(0, Math.min(outfill, worldSize / 2 - 0.001))
     const topSize = Math.max(0.001, worldSize - 2 * inset)
 
-    const defaultPresets: CameraPreset[] = [
-        { pos: [8.5, 8.5, 8.5], target: [0, 0, 0], fov: 56 },
-        { pos: [0.0, 8.5, 8.5], target: [0, 0, 0], fov: 56 },
-        { pos: [-8.5, 8.5, 0.0], target: [0, 0, 0], fov: 56 },
-        { pos: [0.0, 8.5, -8.5], target: [0, 0, 0], fov: 56 },
+    const defaultPresets = [
+        { pos: [8.5, 8.5, 8.5] as [number, number, number], target: [0, 0, 0] as [number, number, number], fov: 56 },
+        { pos: [0.0, 8.5, 8.5] as [number, number, number], target: [0, 0, 0] as [number, number, number], fov: 56 },
+        { pos: [-8.5, 8.5, 0.0] as [number, number, number], target: [0, 0, 0] as [number, number, number], fov: 56 },
+        { pos: [0.0, 8.5, -8.5] as [number, number, number], target: [0, 0, 0] as [number, number, number], fov: 56 },
     ]
     const allPresets = presets && presets.length ? presets : defaultPresets
     const safeIndex = (presetIndex % allPresets.length + allPresets.length) % allPresets.length
     const fromPropsPreset = allPresets[safeIndex]
     const activePreset = waitingMode ? waitingPreset : fromPropsPreset
     const instant = waitingMode
-    const targetRef = useRef(new THREE.Vector3(...activePreset.target))
 
-    function handlePlaneClick(e: ThreeEvent<MouseEvent>) {
-        if (!editPlacement?.enabled) return
-        e.stopPropagation()
-        const x = e.point.x
-        const z = e.point.z
-        const autoTile = detectTileIndex(x, z, worldSize, pathDirection, indexRotation)
-        const tileIndex = editPlacement.tileIndex ?? autoTile
-        if (tileIndex == null) return
-        const slot = editPlacement.slot ?? 0
-        onPlace?.(tileIndex, slot, x, z)
-    }
+    // Free-roam camera via OrbitControls; suspend rig while interacting
+    const [orbiting, setOrbiting] = useState(false)
+    const [followPreset, setFollowPreset] = useState(true)
+    const controlsRef = useRef<any>(null)
+    useEffect(() => {
+        const t = activePreset.target
+        if (controlsRef.current?.target && Array.isArray(t)) {
+            controlsRef.current.target.set(t[0], t[1], t[2])
+            controlsRef.current.update?.()
+        }
+    }, [activePreset.target])
+    // When preset index changes, re-enable following that preset
+    useEffect(() => { setFollowPreset(true) }, [safeIndex, waitingMode])
 
     return (
-        <div style={{ width: '100%', maxWidth: 1000, height: 720 }}>
+        <div className="scene">
             <Canvas
                 camera={{ fov: activePreset.fov ?? 56, position: activePreset.pos }}
                 shadows
@@ -349,33 +304,70 @@ function Board3D({
                 onCreated={({ gl }) => {
                     gl.toneMapping = THREE.NoToneMapping
                     gl.toneMappingExposure = L.exposure
+                    // Soften shadows and use physically-based lighting
+                    gl.shadowMap.enabled = true
+                    gl.shadowMap.type = THREE.PCFSoftShadowMap
+                    ;(gl as any).physicallyCorrectLights = true
                 }}
             >
-                <CameraRig preset={activePreset} lerp={cameraLerp} instant={instant} targetOutRef={targetRef} />
+                <CameraRig preset={activePreset} lerp={cameraLerp} instant={instant} suspend={orbiting || !followPreset} />
+                <OrbitControls
+                    ref={controlsRef}
+                    makeDefault
+                    enabled
+                    enableDamping
+                    dampingFactor={0.12}
+                    rotateSpeed={0.8}
+                    zoomSpeed={0.9}
+                    panSpeed={0.9}
+                    minDistance={4}
+                    maxDistance={26}
+                    maxPolarAngle={Math.PI * 0.495}
+                    target={activePreset.target}
+                    onStart={() => { setOrbiting(true); setFollowPreset(false) }}
+                    onEnd={() => setOrbiting(false)}
+                />
 
-                {/* Lights */}
+                {/* Lights & Atmosphere */}
                 <color attach="background" args={[L.background]} />
+                {/* Mild distance fog to blend with site background */}
+                <fog attach="fog" args={[L.background, worldSize * 2.2, worldSize * 4.0]} />
                 <ambientLight intensity={L.ambient} />
                 <hemisphereLight skyColor="#ffffff" groundColor="#cfd8dc" intensity={L.hemi} />
-                <directionalLight position={[6, 10, 6]} intensity={L.key} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+                <directionalLight
+                    position={[6, 10, 6]}
+                    intensity={L.key}
+                    castShadow
+                    shadow-mapSize-width={1536}
+                    shadow-mapSize-height={1536}
+                    shadow-camera-near={1}
+                    shadow-camera-far={50}
+                    shadow-camera-left={-12}
+                    shadow-camera-right={12}
+                    shadow-camera-top={12}
+                    shadow-camera-bottom={-12}
+                    shadow-radius={2}
+                    shadow-bias={-0.0001}
+                />
                 <directionalLight position={[-6, 8, -6]} intensity={L.fill} />
 
                 {/* Board */}
                 <BoardBody size={worldSize} thickness={boardThickness} color={boardBodyColor} />
                 <BoardRim size={worldSize} innerSize={topSize} height={rimHeight} color={rimColor} y={0.006} />
+                {/* Invisible ground that only receives soft shadows, matching site minimalism */}
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -Math.max(boardThickness * 0.6, 0.18), 0]} receiveShadow>
+                    <planeGeometry args={[worldSize * 3, worldSize * 3]} />
+                    <shadowMaterial transparent opacity={0.22} />
+                </mesh>
                 <Suspense fallback={null}>
-                    <ClickableBoardPlane
-                        size={topSize}
-                        url={boardImageUrl || '/board.png'}
-                        y={0.002}
-                        onClick={handlePlaneClick}
-                    />
+                    <ClickableBoardPlane size={topSize} url={boardImageUrl || '/board.png'} y={0.002} />
                 </Suspense>
 
                 {/* Tokens */}
-                {plist.map((p, i) => {
+                {plist.map((p, idx) => {
                     const tileIndex = (p.position + (displayOffset % 40) + 40) % 40
-                    const slot = i % 8
+                    const idsHere = occupancy.get(tileIndex) || []
+                    const slot = Math.min(idsHere.indexOf(p.id), 7)
                     const sourceIndex = placementAliases?.[tileIndex] ?? tileIndex
                     const ov = placementOverrides?.[sourceIndex]?.[slot]
                     const [x, z] = ov
@@ -384,29 +376,29 @@ function Board3D({
                     const y = 0.14
                     const cfg = models[p.id]
                     if (cfg?.url) {
-                        const fallback = showFallbackSpheres
-                            ? <SphereToken name={p.name} color={colorFor(i)} position={[x, y, z]} showLabel={showLabels} />
-                            : null
                         return (
-                            <Suspense key={p.id} fallback={fallback}>
-                                <STLToken name={p.name} cfg={cfg} position={[x, y, z]} showLabel={showLabels} />
+                            <Suspense key={p.id} fallback={null}>
+                                <STLToken cfg={cfg} position={[x, y, z]} />
                             </Suspense>
                         )
                     }
                     return showFallbackSpheres
-                        ? <SphereToken key={p.id} name={p.name} color={colorFor(i)} position={[x, y, z]} showLabel={showLabels} />
-                        : <group key={p.id} />
+                        ? (
+                            <group key={p.id} position={[x, y, z]}>
+                                <mesh castShadow>
+                                    <sphereGeometry args={[0.18, 24, 24]} />
+                                    <meshStandardMaterial color={TOKEN_COLORS[idx % TOKEN_COLORS.length]} metalness={0.05} roughness={0.6} />
+                                </mesh>
+                                {showLabels && (
+                                    <Html center distanceFactor={12}>
+                                        <div style={{ background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }}>{p.name}</div>
+                                    </Html>
+                                )}
+                            </group>
+                        ) : <group key={p.id} />
                 })}
-
-                {/* Visualize overrides */}
-                {placementOverrides && Object.entries(placementOverrides).map(([ti, arr]) =>
-                    (arr || []).map((pt, si) => pt && (
-                        <mesh key={`m-${ti}-${si}`} position={[pt[0], 0.06, pt[1]]}>
-                            <boxGeometry args={[0.06, 0.06, 0.06]} />
-                            <meshStandardMaterial color="#111827" />
-                        </mesh>
-                    ))
-                )}
+                {/* Extra scene content (e.g., animated dice) */}
+                {children}
             </Canvas>
         </div>
     )

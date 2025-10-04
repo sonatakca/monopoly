@@ -42,6 +42,11 @@ export default function DiceGLB({
   useEffect(() => {
     scene.traverse((o) => {
       o.frustumCulled = false
+      if ((o as any).isMesh) {
+        const m = o as THREE.Mesh
+        m.castShadow = true
+        m.receiveShadow = true
+      }
       // Make sure skinned meshes update properly
       if ((o as any).isSkinnedMesh) {
         const sm = o as THREE.SkinnedMesh

@@ -145,7 +145,7 @@ export function kick(state: any, adminId: string, targetId: string): string | nu
   state.order = state.order.filter((x: string) => x !== targetId)
   delete state.players[targetId]
   delete state.ready[targetId]
-  // rotate admin if needed
+  // if admin kicked self (not via UI), rotate admin
   if (state.adminId === targetId) {
     state.adminId = state.order[0] || ''
   }
@@ -162,7 +162,8 @@ export function start(state: any, byId: string): string | null {
   if (state.adminId !== byId) return 'Sadece admin başlatabilir.'
   if (!canStart(state)) return 'Herkes hazır olmalı ve en az 2 oyuncu gerekir.'
   state.started = true
-  state.phase = 'order' // (you can implement roll-for-order later)
+  state.phase = 'order' // first: roll to determine play order
+  // order remains join order; they will roll to set final order if you later implement it.
   state.turnIndex = 0
   return null
 }
@@ -256,6 +257,25 @@ function passBid(state: RoomState, pid: string, log: string[]) {
     log.push(`${winner.name} kazandı: ${space.name} (${a.highestBid}₺)`)
     state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
   }
+}
+
+function canBuildHouse(state: RoomState, p: Player, prop: Property) {
+  if (!ownsSet(state, p, prop)) return false
+  if (prop.mortgaged) return false
+  if ((state as any).bank.houses <= 0) return false
+  const set = getSet(prop)
+  const levels = set.map(s => (p.hotels[s.id] ? 5 : (p.houses[s.id] || 0)))
+  const thisLevel = p.houses[prop.id] || 0
+  const minLevel = Math.min(...levels)
+  return thisLevel === minLevel && thisLevel < 4 && !(p.hotels[prop.id])
+}
+function canBuyHotel(state: RoomState, p: Player, prop: Property) {
+  if (!ownsSet(state, p, prop)) return false
+  if (prop.mortgaged) return false
+  if ((state as any).bank.hotels <= 0) return false
+  const set = getSet(prop)
+  if (!set.every(s => (p.houses[s.id] || 0) === 4)) return false
+  return (p.hotels[prop.id] || 0) === 0
 }
 
 function landOn(state: RoomState, p: Player, space: BoardSpace, log: string[]) {

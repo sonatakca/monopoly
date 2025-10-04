@@ -25,7 +25,9 @@
   },
   "include": [
     ".",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "../../packages/shared/**/*.ts",
+    "../../packages/shared/**/*.json"
   ],
   "exclude": [
     "node_modules"
