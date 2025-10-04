@@ -26,3 +26,7 @@ pnpm-debug.log*
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+# shared package compiled artifacts
+packages/shared/*.js
+packages/shared/*.d.ts.map
+packages/shared/*.js.map

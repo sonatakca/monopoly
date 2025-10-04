@@ -3,8 +3,8 @@ import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
 import { Html, OrbitControls } from '@react-three/drei'
 import { Suspense, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
-import type { Player } from '../../../packages/shared/types'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import type { Player } from '@shared/types'
 
 type Lighting = {
     ambient?: number
@@ -185,7 +185,7 @@ function CameraRig({ preset, lerp = 0.08, instant = false, suspend = false }: {
     instant?: boolean
     suspend?: boolean
 }) {
-    const { camera } = useThree()
+    const camera = useThree((s) => s.camera as THREE.PerspectiveCamera)
     const internalTarget = useRef(new THREE.Vector3(...preset.target))
     const desiredPos = useRef(new THREE.Vector3(...preset.pos))
     const desiredFov = useRef(preset.fov ?? camera.fov)
@@ -333,7 +333,7 @@ function Board3D({
                 {/* Mild distance fog to blend with site background */}
                 <fog attach="fog" args={[L.background, worldSize * 2.2, worldSize * 4.0]} />
                 <ambientLight intensity={L.ambient} />
-                <hemisphereLight skyColor="#ffffff" groundColor="#cfd8dc" intensity={L.hemi} />
+                <hemisphereLight color="#ffffff" groundColor="#cfd8dc" intensity={L.hemi} />
                 <directionalLight
                     position={[6, 10, 6]}
                     intensity={L.key}
@@ -405,4 +405,3 @@ function Board3D({
 }
 
 export default memo(Board3D)
-export type { PlacementOverrides }

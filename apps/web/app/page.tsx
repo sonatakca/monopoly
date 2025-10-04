@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, Suspense } from 'react'
 import { socket } from '../lib/socket'
-import type { ServerEvent, ClientEvent, RoomState } from '../../../packages/shared/types'
+import type { ServerEvent, ClientEvent, RoomState } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
 import DiceGLB from './components/DiceGLB'
 import RoomsList from './components/RoomsList'
@@ -633,7 +633,7 @@ export default function Home() {
         )}
         {me && (
           <button onClick={() => send({ type: 'readyToggle' } as any)}>
-            {(state as any)?.ready?.[socket.id] ? 'Hazır değilim' : 'Hazırım'}
+            {((state as any)?.ready && socket.id && (state as any).ready[socket.id]) ? 'Hazır değilim' : 'Hazırım'}
           </button>
         )}
         {isAdmin && (

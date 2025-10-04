@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { type Request, type Response } from 'express'
 import cors from 'cors'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
@@ -10,10 +10,10 @@ const ALLOWED = ['http://localhost:3000','http://127.0.0.1:3000']
 if (WEB_ORIGIN) ALLOWED.push(WEB_ORIGIN)
 const app = express()
 app.use(cors({ origin: ALLOWED, credentials: false }))
-app.get('/health', (_req, res) => res.send('ok'))
+app.get('/health', (_req: Request, res: Response) => res.send('ok'))
 
 // List rooms with at least one player
-app.get('/rooms', (_req, res) => {
+app.get('/rooms', (_req: Request, res: Response) => {
   try {
     const list = Object.values(rooms).map((r) => {
       const playerEntries = Object.entries(r.players || {})

@@ -5,6 +5,10 @@
     "moduleResolution": "Bundler",
     "jsx": "preserve",
     "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../../packages/shared/*"]
+    },
     "lib": [
       "dom",
       "dom.iterable",
