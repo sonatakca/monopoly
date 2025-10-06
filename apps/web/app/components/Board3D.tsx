@@ -20,6 +20,8 @@ type TokenModel = {
     color?: string
     rotation?: [number, number, number]
     y?: number
+    /** If provided, the model will be uniformly scaled so its largest dimension equals this value (in scene units). */
+    fitSize?: number
 }
 export type CameraPreset = { pos: [number, number, number]; target: [number, number, number]; fov?: number }
 type PathDirection = 'clockwise' | 'counterclockwise'
@@ -103,19 +105,110 @@ function ClickableBoardPlane({
     )
 }
 
-function STLToken({ cfg, position }: { cfg: TokenModel; position: [number, number, number] }) {
+function STLToken({ cfg, position, yaw = 0 }: { cfg: TokenModel; position: [number, number, number]; yaw?: number }) {
     const geom = useLoader(STLLoader, cfg.url) as THREE.BufferGeometry
     const geometry = geom.clone()
     geometry.computeVertexNormals()
+    // Compute fit scaling based on original size
+    const box = new THREE.Box3().setFromBufferAttribute(geometry.getAttribute('position') as any)
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    let scale = cfg.scale ?? 1
+    if (cfg.fitSize && Number.isFinite(cfg.fitSize) && Math.max(size.x, size.y, size.z) > 0) {
+        const maxDim = Math.max(size.x, size.y, size.z)
+        scale = (cfg.fitSize as number) / maxDim
+    }
     geometry.center()
-    const rot = cfg.rotation ?? [-Math.PI / 2, 0, 0]
-    const scale = cfg.scale ?? 1
+    // Fixed tilt to convert STL's up-axis to three.js Y-up (commonly -90deg around X)
+    const fixedTilt = cfg.rotation ?? [-Math.PI / 2, 0, 0]
     const color = cfg.color ?? '#c0c8d0'
     return (
-        <group position={[position[0], cfg.y ?? position[1], position[2]]} rotation={rot} scale={scale}>
-            <mesh geometry={geometry} castShadow receiveShadow>
-                <meshStandardMaterial color={color} metalness={0.1} roughness={0.6} />
-            </mesh>
+        // Outer group applies yaw around world Y so pieces always face travel direction without pitching
+        <group position={[position[0], cfg.y ?? position[1], position[2]]} rotation={[0, yaw, 0]} scale={scale}>
+            {/* Inner group applies fixed tilt only */}
+            <group rotation={fixedTilt as any}>
+                <mesh geometry={geometry} castShadow receiveShadow>
+                    <meshStandardMaterial color={color} metalness={0.1} roughness={0.6} />
+                </mesh>
+            </group>
+        </group>
+    )
+}
+
+// Smooth, per-tile hop animation with corner turning
+function AnimatedToken({
+    id,
+    tileIndex,
+    slot,
+    cfg,
+    worldSize,
+    pathDirection,
+    indexRotation,
+}: {
+    id: string
+    tileIndex: number
+    slot: number
+    cfg: TokenModel
+    worldSize: number
+    pathDirection: PathDirection
+    indexRotation: 0 | 90 | 180 | 270
+}) {
+    const group = useRef<THREE.Group>(null!)
+    const fromTile = useRef(tileIndex)
+    const toTile = useRef(tileIndex)
+    const queue = useRef<number[]>([])
+    const t = useRef(0)
+    const step = pathDirection === 'clockwise' ? 1 : -1
+    const tileTime = 0.35 // seconds per tile
+    const hop = 0.09 // hop height
+    const baseY = 0.14 + (cfg.y ?? 0)
+    const yawOffset = -Math.PI / 2
+
+    useEffect(() => {
+        const cur = toTile.current
+        if (cur === tileIndex) return
+        const steps: number[] = []
+        let i = cur
+        while (i !== tileIndex) {
+            i = (i + step + 40) % 40
+            steps.push(i)
+        }
+        if (steps.length) queue.current.push(...steps)
+    }, [tileIndex, step])
+
+    useFrame((_, delta) => {
+        const g = group.current
+        if (!g) return
+        if (queue.current.length > 0) {
+            if (t.current === 0) {
+                fromTile.current = toTile.current
+                toTile.current = queue.current.shift() as number
+            }
+            t.current += delta / tileTime
+            const tt = Math.min(t.current, 1)
+            const [x0, z0] = positionFor(fromTile.current, slot, worldSize, pathDirection, indexRotation)
+            const [x1, z1] = positionFor(toTile.current, slot, worldSize, pathDirection, indexRotation)
+            const x = x0 + (x1 - x0) * tt
+            const z = z0 + (z1 - z0) * tt
+            const y = baseY + Math.sin(Math.PI * tt) * hop
+            const yaw0 = yawToward(fromTile.current, worldSize, pathDirection, indexRotation) + yawOffset
+            const yaw1 = yawToward(toTile.current, worldSize, pathDirection, indexRotation) + yawOffset
+            let d = ((yaw1 - yaw0 + Math.PI) % (2 * Math.PI)) - Math.PI
+            const yaw = yaw0 + d * tt
+            g.position.set(x, y, z)
+            g.rotation.set(0, yaw, 0)
+            if (t.current >= 1) t.current = 0
+        } else {
+            const [x, z] = positionFor(tileIndex, slot, worldSize, pathDirection, indexRotation)
+            const yaw = yawToward(tileIndex, worldSize, pathDirection, indexRotation) + yawOffset
+            g.position.set(x, baseY, z)
+            g.rotation.set(0, yaw, 0)
+        }
+    })
+
+    return (
+        <group ref={group}>
+            <STLToken cfg={cfg} position={[0, 0, 0]} yaw={0} />
         </group>
     )
 }
@@ -176,6 +269,22 @@ function positionFor(index: number, slot: number, S: number, dir: PathDirection,
     else if (edge === 'left') { lx = v * d; lz = -u * w }
     else if (edge === 'right') { lx = -v * d; lz = u * w }
     return [cx + lx, cz + lz]
+}
+
+// Compute yaw (rotation around Y) to face the direction of travel at a tile
+function yawToward(index: number, _S: number, dir: PathDirection, rot: 0 | 90 | 180 | 270): number {
+    // Orientation is constant per side, only changes at corners.
+    // Normalize index to a clockwise frame, then add rotation offset.
+    const i = ((index % 40) + 40) % 40
+    const icw = dir === 'clockwise' ? i : ((40 - i) % 40)
+    let yawCW = 0 // +Z
+    if (icw >= 1 && icw <= 9) yawCW = -Math.PI / 2           // bottom side (moving -X)
+    else if (icw === 0) yawCW = -Math.PI / 2
+    else if (icw >= 10 && icw <= 19) yawCW = Math.PI         // left side (moving -Z)
+    else if (icw >= 20 && icw <= 29) yawCW = Math.PI / 2     // top side (moving +X)
+    else if (icw >= 30 && icw <= 39) yawCW = 0               // right side (moving +Z)
+    const rotRad = (rot * Math.PI) / 180
+    return yawCW + rotRad
 }
 
 /* Camera rig */
@@ -307,7 +416,7 @@ function Board3D({
                     // Soften shadows and use physically-based lighting
                     gl.shadowMap.enabled = true
                     gl.shadowMap.type = THREE.PCFSoftShadowMap
-                    ;(gl as any).physicallyCorrectLights = true
+                        ; (gl as any).physicallyCorrectLights = true
                 }}
             >
                 <CameraRig preset={activePreset} lerp={cameraLerp} instant={instant} suspend={orbiting || !followPreset} />
@@ -366,21 +475,25 @@ function Board3D({
                     const slot = Math.min(idsHere.indexOf(p.id), 7)
                     const sourceIndex = placementAliases?.[tileIndex] ?? tileIndex
                     const ov = placementOverrides?.[sourceIndex]?.[slot]
-                    const [x, z] = ov
-                        ? ov
-                        : positionFor(tileIndex, slot, worldSize, pathDirection, indexRotation)
-                    const y = 0.14
                     const cfg = models[p.id]
                     if (cfg?.url) {
                         return (
                             <Suspense key={p.id} fallback={null}>
-                                <STLToken cfg={cfg} position={[x, y, z]} />
+                                <AnimatedToken
+                                    id={p.id}
+                                    tileIndex={tileIndex}
+                                    slot={slot}
+                                    cfg={cfg}
+                                    worldSize={worldSize}
+                                    pathDirection={pathDirection}
+                                    indexRotation={indexRotation}
+                                />
                             </Suspense>
                         )
                     }
                     return showFallbackSpheres
                         ? (
-                            <group key={p.id} position={[x, y, z]}>
+                            <group key={p.id} position={(() => { const [x, z] = ov ? ov : positionFor(tileIndex, slot, worldSize, pathDirection, indexRotation); return [x, 0.14, z] })()}>
                                 <mesh castShadow>
                                     <sphereGeometry args={[0.18, 24, 24]} />
                                     <meshStandardMaterial color={TOKEN_COLORS[idx % TOKEN_COLORS.length]} metalness={0.05} roughness={0.6} />
