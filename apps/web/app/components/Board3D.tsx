@@ -8,6 +8,8 @@ import board from '@shared/board.tr.json'
 import { Suspense, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import bakedTileZonesRaw from '../../public/baked-in-content/tile-zones.json'
+import bakedTokenZonesRaw from '../../public/baked-in-content/token-zones.json'
 
 import type { Player } from '@shared/types'
 import { DEFAULT_TOKEN_GAPS_Y, DEFAULT_TOKEN_SCALES } from '@shared/tokens'
@@ -455,8 +457,9 @@ function getZoneBand(): ZoneBand {
 // Per-tile group transforms (2D offset and yaw), persisted for dev editing
 type ZoneTransform = { dx: number; dz: number; rot: number; yaw?: number; spreadW?: number; spreadD?: number; splitW?: number; slots?: Record<string, [number, number] | [number, number, number]> }
 const ZONES_TX_KEY = 'monopoly.dev.zones.tx'
-// Optional baked-in zones dump (paste your exported JSON here to bake into code)
-const BAKED_ZONES_DUMP: any[] = []
+const BAKED_TILE_ZONES_RAW: any[] = Array.isArray(bakedTileZonesRaw) ? bakedTileZonesRaw : []
+// Baked-in token zone transforms sourced from public/baked-in-content/token-zones.json
+const BAKED_ZONES_DUMP: any[] = Array.isArray(bakedTokenZonesRaw) ? bakedTokenZonesRaw : []
 const BAKED_ZONE_TRANSFORMS: Record<string, ZoneTransform> = (() => {
     const m: Record<string, ZoneTransform> = {}
     try {
@@ -479,6 +482,9 @@ const BAKED_ZONE_TRANSFORMS: Record<string, ZoneTransform> = (() => {
     } catch { }
     return m
 })()
+function shouldUseDevZoneJson(): boolean {
+    return getDevFlag('useDevZoneJson') || getDevFlag('tileZones') || getDevFlag('editZones')
+}
 function readTxMap(): Record<string, ZoneTransform> {
     try {
         const raw = typeof window !== 'undefined' ? localStorage.getItem(ZONES_TX_KEY) : null
@@ -490,14 +496,20 @@ function writeTxMap(m: Record<string, ZoneTransform>) {
     try { if (typeof window !== 'undefined') localStorage.setItem(ZONES_TX_KEY, JSON.stringify(m)) } catch { }
 }
 function getZoneTx(tile: number): ZoneTransform {
-    const m = readTxMap()
     const k = String(tile)
-    return m[k] || BAKED_ZONE_TRANSFORMS[k] || { dx: 0, dz: 0, rot: 0, yaw: 0 }
+    if (shouldUseDevZoneJson()) {
+        const m = readTxMap()
+        if (m[k]) return m[k]
+    }
+    return BAKED_ZONE_TRANSFORMS[k] || { dx: 0, dz: 0, rot: 0, yaw: 0 }
 }
 function getZoneTxKey(key: string): ZoneTransform {
-    const m = readTxMap()
     const k = String(key)
-    return m[k] || BAKED_ZONE_TRANSFORMS[k] || { dx: 0, dz: 0, rot: 0, yaw: 0 }
+    if (shouldUseDevZoneJson()) {
+        const m = readTxMap()
+        if (m[k]) return m[k]
+    }
+    return BAKED_ZONE_TRANSFORMS[k] || { dx: 0, dz: 0, rot: 0, yaw: 0 }
 }
 function setZoneTx(tile: number, patch: Partial<ZoneTransform>) {
     const m = readTxMap()
@@ -1202,20 +1214,52 @@ function Board3D({
     // --- Dev: tile zones (toggle via MonopolyDev.set('tileZones', true)) ----
     const tileZonesEnabled = getDevFlag('tileZones')
     const dumpTileZonesFlag = getDevFlag('dumpTileZones')
+    // When dev tooling is active (or the explicit flag is set) prefer runtime JSON over baked defaults
+    const useDevZoneJson = tileZonesEnabled || getDevFlag('editZones') || getDevFlag('useDevZoneJson')
     type ZoneKind = 'hz' | 'pz'
     type ZoneTx = { dx?: number; dz?: number; wScale?: number; dScale?: number; rot?: number }
     type TileZones = Record<string, Partial<Record<ZoneKind, ZoneTx>>>
     const TILE_ZONES_LS = 'monopoly.dev.tileZones'
+    const bakedTileZones = useMemo<TileZones>(() => {
+        const map: TileZones = {}
+        for (const entry of BAKED_TILE_ZONES_RAW) {
+            if (!entry || typeof entry.tile !== 'number') continue
+            const key = String(entry.tile)
+            const next: Partial<Record<ZoneKind, ZoneTx>> = {}
+            if (entry.hz && typeof entry.hz === 'object') next.hz = { ...(entry.hz as any) }
+            if (entry.pz && typeof entry.pz === 'object') next.pz = { ...(entry.pz as any) }
+            if (Object.keys(next).length) map[key] = next
+        }
+        return map
+    }, [])
+    const cloneTileZones = (src: TileZones): TileZones => JSON.parse(JSON.stringify(src || {})) as TileZones
     function readTileZones(): TileZones {
-        try { const raw = localStorage.getItem(TILE_ZONES_LS); return raw ? JSON.parse(raw) : {} } catch { return {} }
+        if (useDevZoneJson) {
+            try {
+                const raw = localStorage.getItem(TILE_ZONES_LS)
+                if (raw) {
+                    const parsed = JSON.parse(raw)
+                    if (parsed && typeof parsed === 'object') return parsed
+                }
+            } catch { }
+        }
+        return cloneTileZones(bakedTileZones)
     }
-    function writeTileZones(m: TileZones) { try { localStorage.setItem(TILE_ZONES_LS, JSON.stringify(m)) } catch { } }
+    function writeTileZones(m: TileZones) {
+        if (!useDevZoneJson) return
+        try { localStorage.setItem(TILE_ZONES_LS, JSON.stringify(m)) } catch { }
+    }
     const twoZoneTiles = useMemo(() => new Set<number>([0, 1, 3, 6, 8, 9, 11, 13, 14, 16, 18, 19, 21, 23, 24, 26, 27, 29, 31, 32, 34, 37, 39]), [])
     const FORCE_NON_PROP = useMemo(() => new Set<number>([5, 15, 25, 35, 12, 28, 2, 7, 17, 22, 33, 36, 4, 38]), [])
     const HIGHLIGHT_EXCLUDED = useMemo(() => new Set<number>([0, 10, 20, 30, 2, 4, 7, 17, 22, 33, 36, 38]), [])
     const [tzMap, setTzMap] = useState<TileZones>(() => readTileZones())
+    const tileZoneInitRef = useRef(true)
     const [selZone, setSelZone] = useState<{ tile: number; kind: ZoneKind } | null>(null)
     useEffect(() => { if (!tileZonesEnabled) setSelZone(null) }, [tileZonesEnabled])
+    useEffect(() => {
+        if (tileZoneInitRef.current) { tileZoneInitRef.current = false; return }
+        setTzMap(readTileZones())
+    }, [useDevZoneJson, bakedTileZones])
     // Expose a small runtime API and handle dump flag
     const dumpOnceRef = useRef(false)
     const makeDump = useMemo(() => () => {
@@ -1262,6 +1306,7 @@ function Board3D({
         w.MonopolyDev.tileZones.applyDump = (arr: any) => {
             try {
                 if (!Array.isArray(arr)) { console.warn('[tileZones] applyDump expects an array'); return }
+                if (!useDevZoneJson) { console.warn('[tileZones] applyDump ignored because useDevZoneJson flag is disabled'); return }
                 const m: TileZones = {}
                 for (const it of arr) {
                     if (!it || typeof it.tile !== 'number') continue
@@ -1274,7 +1319,7 @@ function Board3D({
                 console.log('[tileZones] applied', arr.length, 'entries')
             } catch (e) { console.warn('[tileZones applyDump failed]', e) }
         }
-    }, [makeDump])
+    }, [makeDump, useDevZoneJson])
     useEffect(() => {
         if (!dumpTileZonesFlag || dumpOnceRef.current === true) return
         // Trigger one-time download when flag is enabled
