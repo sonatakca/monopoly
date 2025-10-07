@@ -6,8 +6,9 @@ services:
     plan: free
     buildCommand: |
       corepack enable
-      pnpm i --frozen-lockfile
-    startCommand: node server.js
+      pnpm install --frozen-lockfile
+      pnpm run build
+    startCommand: pnpm start
     envVars:
       - key: NODE_ENV
         value: production
