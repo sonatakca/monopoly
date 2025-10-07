@@ -314,12 +314,18 @@ function BoardRim({ size = 10, innerSize = 9.88, height = 0.04, color = '#000', 
 function ClickableBoardPlane({
     size, url, y, ...rest
 }: { size: number; url: string; y: number } & any) {
-    const texture = useLoader(THREE.TextureLoader, url)
+    const texture = useTexture(url)
     const { gl } = useThree()
-    const maxAniso = gl.capabilities.getMaxAnisotropy()
-    texture.anisotropy = Math.max(8, maxAniso)
-    texture.minFilter = THREE.LinearMipmapLinearFilter
-    texture.magFilter = THREE.LinearFilter
+    const tex: THREE.Texture = Array.isArray(texture)
+        ? (texture[0] as THREE.Texture)
+        : (texture as THREE.Texture)
+    const maxAniso = (gl.capabilities as any)?.getMaxAnisotropy?.() ?? 16
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.generateMipmaps = true
+    tex.anisotropy = Math.max(8, maxAniso)
+    tex.minFilter = THREE.LinearMipmapLinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.needsUpdate = true
     return (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} receiveShadow {...rest}>
             <planeGeometry args={[size, size]} />
