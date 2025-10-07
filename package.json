@@ -1,11 +1,17 @@
 {
   "name": "monopolytr",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "start": "pnpm -r start"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5"
   }
 }
