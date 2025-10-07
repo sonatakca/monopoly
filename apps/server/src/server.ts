@@ -6,7 +6,7 @@ import { addPlayer, createRoom, reducer } from './game.js'
 import type { ClientEvent, ServerEvent } from '../../../packages/shared/types.js'
 
 const WEB_ORIGIN = process.env.WEB_ORIGIN || ''
-const ALLOWED = ['http://localhost:3000','http://127.0.0.1:3000']
+const ALLOWED = ['http://localhost:3000','http://127.0.0.1:3000', 'https://monopoly-with-friends.vercel.app']
 if (WEB_ORIGIN) ALLOWED.push(WEB_ORIGIN)
 const app = express()
 app.use(cors({ origin: ALLOWED, credentials: false }))
