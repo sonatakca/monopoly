@@ -9,6 +9,10 @@ cd C:\\Users\\sonat\\Desktop\\monopolytr\\monopoly
 pnpm -C apps/server dev
 ```
 
+To enable development-only helpers such as flushing in-memory rooms, set `DEV_ENABLE_FLUSH=1` when running the server. Once enabled, send a `POST` request to `http://127.0.0.1:8787/dev/flush` to clear all rooms and timers.
+
+When deploying the client, point `NEXT_PUBLIC_SOCKET_URL` (and optionally `NEXT_PUBLIC_API_URL`) to your hosted game server. The default production build uses the Render deployment at `https://monopoly-socket-server.onrender.com`.
+
 ## Terminal 2
 
 ```

@@ -1,7 +1,13 @@
 import { io } from 'socket.io-client'
 
-// Use 127.0.0.1 to avoid some localhost resolution quirks on Windows
-const url = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://127.0.0.1:8787'
+// Default to the Render deployment when we're in production, otherwise assume
+// local development (which still prefers overriding via NEXT_PUBLIC_SOCKET_URL).
+const DEFAULT_REMOTE = 'https://monopoly-socket-server.onrender.com'
+const DEFAULT_LOCAL = 'http://127.0.0.1:8787'
+
+const url =
+  process.env.NEXT_PUBLIC_SOCKET_URL ??
+  (process.env.NODE_ENV === 'production' ? DEFAULT_REMOTE : DEFAULT_LOCAL)
 
 // Force websocket (skip polling that’s failing)
 // If you deploy later, you can remove the transports override.

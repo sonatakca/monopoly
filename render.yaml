@@ -6,6 +6,9 @@ services:
     plan: free
     buildCommand: |
       corepack enable
+      pnpm install --frozen-lockfile
+      pnpm run build
+    startCommand: pnpm start
       pnpm i --frozen-lockfile
       pnpm run build
       node -e "const fs=require('fs'),p=require('path');fs.mkdirSync(p.join('dist','packages','shared'),{recursive:true});fs.copyFileSync(p.join('..','..','packages','shared','board.tr.json'),p.join('dist','packages','shared','board.tr.json'));console.log('✔ copied board.tr.json');"

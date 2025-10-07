@@ -13,6 +13,8 @@ app.use(cors({ origin: ALLOWED, credentials: false }))
 app.get('/health', (_req: Request, res: Response) => res.send('ok'))
 app.get('/server', (_req, res) => res.send('monopoly server is up'));
 
+const DEV_ENABLE_FLUSH = ['1', 'true', 'yes'].includes((process.env.DEV_ENABLE_FLUSH || '').toLowerCase())
+
 // List rooms with at least one player
 app.get('/rooms', (_req: Request, res: Response) => {
   try {
@@ -82,6 +84,20 @@ function autoPass(rid: string, at: number, forId: string) {
     // Schedule for next player's turn (if still in play)
     scheduleTurnTimer(rid)
   }
+}
+
+if (DEV_ENABLE_FLUSH) {
+  app.post('/dev/flush', (_req: Request, res: Response) => {
+    const roomIds = Object.keys(rooms)
+    for (const rid of roomIds) {
+      clearTurnTimer(rid)
+      delete turnTimers[rid]
+      delete timerMeta[rid]
+      delete lastActionAt[rid]
+      delete rooms[rid]
+    }
+    res.json({ ok: true, deleted: roomIds.length })
+  })
 }
 
 io.on('connection', (socket) => {
