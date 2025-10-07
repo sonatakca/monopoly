@@ -21,6 +21,7 @@ export type DevFlag =
   | 'showPropertyCard'
   | 'showPropertyCard3D'
   | 'sim8'
+  | 'useDevZoneJson'
   | 'tileZones'
   | 'dumpTileZones'
 
