@@ -37,7 +37,7 @@ export default function PropertyCard3D({
   const backMap = useLoader(THREE.TextureLoader, `/propertyCards/${id}b.png`)
 
   // Increase texture quality a bit on supported GPUs
-  const maxAniso = THREE.MathUtils.clamp((THREE as any).WebGL1Renderer ? 8 : 16, 1, 16)
+  const maxAniso = THREE.MathUtils.clamp((THREE as any).WebGLRenderer ? 8 : 16, 1, 16)
   frontMap.anisotropy = Math.max(frontMap.anisotropy, maxAniso)
   backMap.anisotropy = Math.max(backMap.anisotropy, maxAniso)
   frontMap.minFilter = THREE.LinearMipmapLinearFilter

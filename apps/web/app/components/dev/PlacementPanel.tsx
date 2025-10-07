@@ -16,12 +16,21 @@ type PL = {
 
 function readEnabled(): boolean {
   try {
-    const w: any = window as any
+    // During SSR/Next build there is no window/localStorage.
+    if (typeof window === 'undefined') return false
+
+    const w = window as any
+    // Live value kept on a ref (dev overlay)
     if (w.__plState?.current) return !!w.__plState.current.enabled
-    // Fallback to localStorage flag when API not yet mounted
-    //     const f = localStorage.getItem('monopoly.dev.placements.enabled')
-    //     return f === '1'
-  } catch { return false }
+
+    // Persisted toggle (optional)
+    const raw = window.localStorage?.getItem?.('pl:enabled')
+    if (raw != null) return raw === '1' || raw === 'true'
+  } catch {
+    // ignore and fall through to default
+  }
+  // Default if nothing above returned
+  return false
 }
 
 function readState() {
@@ -71,7 +80,7 @@ export default function PlacementPanel() {
       console.log('[Dev] placements copied to clipboard')
     } catch (e) { console.warn('[Dev] copy failed', e) }
   }
-  const onClear = () => { try { api?.clear?.() } catch {} try { (api as any)?.clearMarkers?.() } catch {} setTick((x) => x + 1) }
+  const onClear = () => { try { api?.clear?.() } catch { } try { (api as any)?.clearMarkers?.() } catch { } setTick((x) => x + 1) }
   const onGenerate = () => {
     const t = st.tileIndex
     if (t == null) return
@@ -100,7 +109,7 @@ export default function PlacementPanel() {
       <button onClick={onGenerate}>Alan’dan üret</button>
       <button onClick={onExport}>JSON Kopyala</button>
       <button onClick={() => { onClear() }}>Temizle</button>
-      <button onClick={() => { try { api?.resetAuto?.() } catch {}; setTick((x)=>x+1) }}>Auto'yu sıfırla</button>
+      <button onClick={() => { try { api?.resetAuto?.() } catch { }; setTick((x) => x + 1) }}>Auto'yu sıfırla</button>
       <span style={{ fontSize: 12, opacity: 0.7 }}>Key: {label}</span>
     </section>
   )

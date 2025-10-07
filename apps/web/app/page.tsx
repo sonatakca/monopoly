@@ -584,8 +584,8 @@ export default function Home() {
       const raw = localStorage.getItem('monopoly.dev.camera')
       if (raw) {
         const d = JSON.parse(raw)
-        const pos = Array.isArray(d.pos) && d.pos.length === 3 ? d.pos as [number, number, number] : [0, 12, 0]
-        const target = Array.isArray(d.target) && d.target.length === 3 ? d.target as [number, number, number] : [0, 0, 0]
+        const pos: [number, number, number] = Array.isArray(d.pos) && d.pos.length === 3 ? [d.pos[0], d.pos[1], d.pos[2]] : [0, 12, 0]
+        const target: [number, number, number] = Array.isArray(d.target) && d.target.length === 3 ? [d.target[0], d.target[1], d.target[2]] : [0, 0, 0]
         const fov = typeof d.fov === 'number' ? d.fov : 55.69041415519604
         return { pos, target, fov }
       }
@@ -726,16 +726,20 @@ export default function Home() {
 
   // If there are no players yet, render 4 preview tokens so models are visible
   const previewPlayers: Record<string, Player> = useMemo(() => {
-    if (state && Object.keys(state.players || {}).length > 0) return {}
-    const mk = (id: string, name: string, position: number): Player => ({
-      id, name, cash: 0, position, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {}
-    })
-    return {
-      'demo-car': mk('demo-car', 'Car', 0),
-      'demo-dog': mk('demo-dog', 'Dog', 10),
-      'demo-hat': mk('demo-hat', 'Hat', 20),
-      'demo-shoe': mk('demo-shoe', 'Shoe', 30),
+    if (state && Object.keys(state.players || {}).length > 0) {
+      return {
+        'demo-car': { id: 'demo-car', name: 'Car', cash: 0, position: 0, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+        'demo-dog': { id: 'demo-dog', name: 'Dog', cash: 0, position: 10, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+        'demo-hat': { id: 'demo-hat', name: 'Hat', cash: 0, position: 20, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+        'demo-shoe': { id: 'demo-shoe', name: 'Shoe', cash: 0, position: 30, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+      };
     }
+    return {
+      'demo-car': { id: 'demo-car', name: 'Car', cash: 0, position: 0, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+      'demo-dog': { id: 'demo-dog', name: 'Dog', cash: 0, position: 10, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+      'demo-hat': { id: 'demo-hat', name: 'Hat', cash: 0, position: 20, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+      'demo-shoe': { id: 'demo-shoe', name: 'Shoe', cash: 0, position: 30, inJail: false, jailTurns: 0, getOutOfJail: 0, bankrupt: false, properties: [], houses: {}, hotels: {} },
+    };
   }, [state?.players])
 
   const effectivePlayers = useMemo(() => {
@@ -950,69 +954,69 @@ export default function Home() {
         </div>
         {!getDevFlag('disable3D') && (
           <>
-          <Board3D
-            players={effectivePlayers}
-            order={effectiveOrder}
-            boardImageUrl="/board.png"
+            <Board3D
+              players={effectivePlayers}
+              order={effectiveOrder}
+              boardImageUrl="/board.png"
 
-            models={tokenModels}
+              models={tokenModels}
 
-            worldSize={10}
-            outfill={0.08}
-            boardThickness={0.3}
-            rimHeight={0.05}
-            rimColor="#000"
-            lighting={{ ambient: 0.3, hemi: 0.2, key: 0.85, fill: 0.4, exposure: 1.0, background: '#7d917a' }}
+              worldSize={10}
+              outfill={0.08}
+              boardThickness={0.3}
+              rimHeight={0.05}
+              rimColor="#000"
+              lighting={{ ambient: 0.3, hemi: 0.2, key: 0.85, fill: 0.4, exposure: 1.0, background: '#7d917a' }}
 
-            presets={presets}
-            presetIndex={preset}
-            waitingMode={!!(state && !state.started)}
-            waitingPreset={waitingPreset}
-            cameraLerp={0.025}
+              presets={presets}
+              presetIndex={preset}
+              waitingMode={!!(state && !state.started)}
+              waitingPreset={waitingPreset}
+              cameraLerp={0.025}
 
-            placementOverrides={placements}
+              placementOverrides={placements}
 
-            indexRotation={270}
-            pathDirection="counterclockwise"
-            displayOffset={0}
+              indexRotation={270}
+              pathDirection="counterclockwise"
+              displayOffset={0}
 
-            showLabels={false}
-            showFallbackSpheres={true}
-          >
-            {state?.lastDice && !getDevFlag('disableDice') && (
-              <Suspense fallback={null}
-              >
-                <DiceRoll
-                  key={`dice-${state.lastDice.d1}-${state.lastDice.d2}-${rollTick}`}
-                  d1={state.lastDice.d1}
-                  d2={state.lastDice.d2}
-                  position={[0, 0, 0]}
-                  scale={6.5}
-                  rotation={diceRotation}
-                  trigger={rollTick}
-                  mode={isMyTurn ? 'roller' : 'spectator'}
-                  castShadows={!getDevFlag('disableDiceShadows')}
-                  onFinished={() => { /* hook if needed */ }}
-                />
-              </Suspense>
-            )}
-          </Board3D>
-          {isMyTurn && (
-            <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)' }}>
-                {canRoll && (
-                  <button className="btn" onClick={handleRollClick}>Zar At</button>
-                )}
-                {showAuction ? (
-                  <button className="btn" onClick={() => send({ type: 'decline' } as any)}>Açık arttırma</button>
-                ) : (
-                  canEndTurn ? (
-                    <button className="btn" onClick={() => send({ type: 'endTurn' } as any)}>Sırayı Bitir</button>
-                  ) : null
-                )}
+              showLabels={false}
+              showFallbackSpheres={true}
+            >
+              {state?.lastDice && !getDevFlag('disableDice') && (
+                <Suspense fallback={null}
+                >
+                  <DiceRoll
+                    key={`dice-${state.lastDice.d1}-${state.lastDice.d2}-${rollTick}`}
+                    d1={state.lastDice.d1}
+                    d2={state.lastDice.d2}
+                    position={[0, 0, 0]}
+                    scale={6.5}
+                    rotation={diceRotation}
+                    trigger={rollTick}
+                    mode={isMyTurn ? 'roller' : 'spectator'}
+                    castShadows={!getDevFlag('disableDiceShadows')}
+                    onFinished={() => { /* hook if needed */ }}
+                  />
+                </Suspense>
+              )}
+            </Board3D>
+            {isMyTurn && (
+              <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)' }}>
+                  {canRoll && (
+                    <button className="btn" onClick={handleRollClick}>Zar At</button>
+                  )}
+                  {showAuction ? (
+                    <button className="btn" onClick={() => send({ type: 'decline' } as any)}>Açık arttırma</button>
+                  ) : (
+                    canEndTurn ? (
+                      <button className="btn" onClick={() => send({ type: 'endTurn' } as any)}>Sırayı Bitir</button>
+                    ) : null
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </>
         )}
         {/* Optional property card overlay for current tile (dev toggle) */}
@@ -1024,7 +1028,7 @@ export default function Home() {
             const t = sp?.type
             const isBuyable = t === 'PROPERTY' || t === 'STATION' || t === 'UTILITY'
             if (!isBuyable) return null
-          } catch {}
+          } catch { }
           return (
             <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 20 }}>
               <PropertyCard id={tile} side={'f'} width={220} />

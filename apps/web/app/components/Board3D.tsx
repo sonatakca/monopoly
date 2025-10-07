@@ -314,7 +314,7 @@ function BoardRim({ size = 10, innerSize = 9.88, height = 0.04, color = '#000', 
 function ClickableBoardPlane({
     size, url, y, ...rest
 }: { size: number; url: string; y: number } & any) {
-    const texture = useLoader(THREE.TextureLoader, url)
+    const texture = useLoader(THREE.TextureLoader, url) as THREE.Texture; // 👈 narrow the type
     const { gl } = useThree()
     const maxAniso = gl.capabilities.getMaxAnisotropy()
     texture.anisotropy = Math.max(8, maxAniso)
@@ -1419,9 +1419,9 @@ function Board3D({
                                 const base = tileRectFor(idx, topSize, pathDirection, indexRotation)
                                 const tileKind = base.edge === 'corner' ? 0 : (FORCE_NON_PROP.has(idx) ? 2 : (isBuyableTile(idx) ? 1 : 2))
                                 if (tileKind !== 1) return // only properties (incl. stations/utilities)
-                                const defHZ: ZoneTx = (tileKind === 0) ? { wScale: 1.56, dScale: 1.56 }
-                                    : (tileKind === 1) ? { wScale: 1.03, dScale: 1.76 }
-                                        : { wScale: 1.02, dScale: 2.30 }
+
+                                // only properties reach here
+                                const defHZ: ZoneTx = { wScale: 1.03, dScale: 1.76 }
                                 const savedHZ = (tzMap[String(idx)]?.hz || {}) as ZoneTx
                                 const tx = { ...defHZ, ...savedHZ } as ZoneTx
                                 const baseW = base.w, baseD = base.d
