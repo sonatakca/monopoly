@@ -4,20 +4,21 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "prebuild": "rimraf dist",
-    "build": "tsc -p . && node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync(p.join('dist','packages','shared'),{recursive:true});fs.copyFileSync(p.join('..','..','packages','shared','board.tr.json'),p.join('dist','packages','shared','board.tr.json'));console.log('✔ copied board.tr.json');\"",
+    "build": "tsc -p .",
+    "postbuild": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync(p.join('dist','packages','shared'),{recursive:true});fs.copyFileSync(p.join('..','..','packages','shared','board.tr.json'),p.join('dist','packages','shared','board.tr.json'))\"",
     "start": "node --enable-source-maps dist/apps/server/src/server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "socket.io": "^4.8.1"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^4.17.23",
-    "@types/node": "^20.19.19",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
     "rimraf": "^5.0.5",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.4"
   }
 }
