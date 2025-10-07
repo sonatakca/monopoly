@@ -30,3 +30,5 @@ Thumbs.db
 packages/shared/*.js
 packages/shared/*.d.ts.map
 packages/shared/*.js.map
+
+*.show
