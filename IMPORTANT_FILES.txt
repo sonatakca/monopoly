@@ -1,0 +1,66 @@
+(The file `c:\Users\sonat\Desktop\monopolytr\monopoly\IMPORTANT_FILES.txt` exists, but is empty)
+# IMPORTANT_FILES.txt
+# This file lists important files and paths in the repository (one per line, relative to repository root).
+# Purpose: help an LLM quickly locate code, configs, and assets for diagnosing and understanding the project.
+
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+README.md
+render.yaml
+
+docs/ACCEPTANCE.md
+docs/ASSETS.md
+docs/SPEC.md
+
+apps/server/Dockerfile
+apps/server/package.json
+apps/server/tsconfig.json
+apps/server/src/server.ts
+apps/server/src/game.ts
+
+web/package.json
+web/next.config.js
+web/next-env.d.ts
+web/tsconfig.json
+web/tsconfig.tsbuildinfo
+
+web/app/layout.tsx
+web/app/page.tsx
+web/app/globals.css
+web/app/preload-assets.ts
+web/app/api/rooms/ (API route directory)
+
+web/app/components/Board.tsx
+web/app/components/Board3D.tsx
+web/app/components/DiceRoll.tsx
+web/app/components/PropertyCard.tsx
+web/app/components/PropertyCard3D.tsx
+web/app/components/PropertyCardModal3D.tsx
+web/app/components/RoomsList.tsx
+web/app/components/dev/ (development-only components)
+
+web/lib/socket.ts
+
+web/public/board.png
+web/public/Monapoly2-transparent.png
+web/public/Monopoly.png
+web/public/Monopoly2.PNG
+web/public/animations/ (dice .glb animations)
+web/public/baked-in-content/tile-zones.json
+web/public/baked-in-content/token-zones.json
+web/public/propertyCards/ (images for property cards)
+
+packages/shared/package.json
+packages/shared/board.tr.json
+packages/shared/tokenRotation.ts
+packages/shared/tokens.ts
+packages/shared/types.ts
+
+# Additional important places to inspect
+.eslintrc* (if present)
+.prettierrc* (if present)
+tsconfig.* (root or package-specific)
+Dockerfile (root or other Dockerfiles)
+
+# End of list

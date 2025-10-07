@@ -7,10 +7,12 @@ services:
     buildCommand: |
       corepack enable
       pnpm i --frozen-lockfile
-    startCommand: node server.js
+      pnpm run build
+      node -e "const fs=require('fs'),p=require('path');fs.mkdirSync(p.join('dist','packages','shared'),{recursive:true});fs.copyFileSync(p.join('..','..','packages','shared','board.tr.json'),p.join('dist','packages','shared','board.tr.json'));console.log('✔ copied board.tr.json');"
+    startCommand: node dist/apps/server/src/server.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: WEB_ORIGIN
-        value: https://monopoly-with-friends.vercel.app/
+        value: https://monopoly-with-friends.vercel.app
     autoDeploy: true
