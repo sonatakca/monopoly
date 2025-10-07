@@ -1,8 +1,8 @@
 'use client'
 import Image from 'next/image'
 import { memo, useMemo } from 'react'
-import type { Board as BoardModel, Player } from '../../../packages/shared/types'
-import boardModel from '../../../packages/shared/board.tr.json'
+import type { Board as BoardModel, Player } from '@shared/types'
+import boardModel from '@shared/board.tr.json'
 
 type Props = {
     players: Record<string, Player>

@@ -1,18 +1,87 @@
-import express from 'express'
+import express, { type Request, type Response } from 'express'
 import cors from 'cors'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { addPlayer, createRoom, reducer } from './game.js'
 import type { ClientEvent, ServerEvent } from '../../../packages/shared/types.js'
 
+const WEB_ORIGIN = process.env.WEB_ORIGIN || ''
+const ALLOWED = ['http://localhost:3000','http://127.0.0.1:3000']
+if (WEB_ORIGIN) ALLOWED.push(WEB_ORIGIN)
 const app = express()
-app.use(cors({ origin: ['http://localhost:3000','http://127.0.0.1:3000'], credentials: false }))
-app.get('/health', (_req, res) => res.send('ok'))
+app.use(cors({ origin: ALLOWED, credentials: false }))
+app.get('/health', (_req: Request, res: Response) => res.send('ok'))
+
+// List rooms with at least one player
+app.get('/rooms', (_req: Request, res: Response) => {
+  try {
+    const list = Object.values(rooms).map((r) => {
+      const playerEntries = Object.entries(r.players || {})
+      const players = playerEntries.map(([id, p]: any) => ({ id, name: p.name }))
+      const readyCount = Object.values((r as any).ready || {}).filter(Boolean).length
+      return {
+        roomId: (r as any).roomId,
+        started: !!r.started,
+        playerCount: players.length,
+        readyCount,
+        players,
+      }
+    }).filter((x) => x.playerCount > 0)
+    res.json({ rooms: list })
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
 
 const httpServer = createServer(app)
-const io = new Server(httpServer, { cors: { origin: ['http://localhost:3000','http://127.0.0.1:3000'] } })
+const io = new Server(httpServer, { cors: { origin: ALLOWED } })
 
 const rooms: Record<string, ReturnType<typeof createRoom>> = {}
+
+// --- Turn timeout (30s) management per room -----------------------------
+const turnTimers: Record<string, NodeJS.Timeout | null> = {}
+const timerMeta: Record<string, { at: number; forId: string } | null> = {}
+const lastActionAt: Record<string, number> = {}
+
+function clearTurnTimer(rid: string) {
+  if (turnTimers[rid]) { clearTimeout(turnTimers[rid]!); turnTimers[rid] = null }
+  timerMeta[rid] = null
+}
+
+function scheduleTurnTimer(rid: string) {
+  const state = rooms[rid] as any
+  if (!state?.started) { clearTurnTimer(rid); return }
+  const curId = state.order?.[state.turnIndex]
+  if (!curId) { clearTurnTimer(rid); return }
+  // Only schedule at fresh turn (before any roll)
+  if (state.lastDice) { clearTurnTimer(rid); return }
+  clearTurnTimer(rid)
+  const at = Date.now()
+  timerMeta[rid] = { at, forId: curId }
+  turnTimers[rid] = setTimeout(() => autoPass(rid, at, curId), 30_000)
+}
+
+function autoPass(rid: string, at: number, forId: string) {
+  const meta = timerMeta[rid]
+  const state = rooms[rid] as any
+  if (!meta || !state) return
+  // Stale or wrong room/turn
+  if (meta.at !== at || meta.forId !== forId) return
+  if (!state.started) return
+  const curId = state.order?.[state.turnIndex]
+  if (curId !== forId) return
+  // If player has taken any action since scheduling, don't pass
+  if ((lastActionAt[rid] || 0) > at) return
+  // If dice were rolled, consider as action (no auto-pass)
+  if (state.lastDice) return
+  try {
+    const replies = reducer(state, curId, { type: 'endTurn' } as any)
+    for (const r of replies) io.to(rid).emit('event', r)
+  } finally {
+    // Schedule for next player's turn (if still in play)
+    scheduleTurnTimer(rid)
+  }
+}
 
 io.on('connection', (socket) => {
   console.log('[io] connection:', socket.id)
@@ -21,8 +90,23 @@ io.on('connection', (socket) => {
 
   socket.on('event', (evt: ClientEvent | any) => {
     if (evt.type === 'join') {
-      roomId = evt.roomId?.trim() || 'oda-1'
+      const nextRoomId = evt.roomId?.trim() || 'oda-1'
       name = evt.name?.trim() || 'Oyuncu'
+      // If already in a different room, remove from previous room's state
+      if (roomId && nextRoomId !== roomId && rooms[roomId]) {
+        const prev = rooms[roomId]
+        if (prev.players[socket.id]) {
+          delete prev.players[socket.id]
+          ;(prev as any).order = (prev as any).order.filter((x: string) => x !== socket.id)
+          if ((prev as any).ready) delete (prev as any).ready[socket.id]
+          if ((prev as any).adminId === socket.id) {
+            (prev as any).adminId = (prev as any).order[0] || ''
+          }
+          io.to(roomId).emit('event', { type: 'state', state: prev } as ServerEvent)
+        }
+      }
+
+      roomId = nextRoomId
       rooms[roomId] ??= createRoom(roomId)
       const err = addPlayer(rooms[roomId] as any, socket.id, name)
       if (err) { socket.emit('event', { type: 'error', text: err } as ServerEvent); return }
@@ -32,13 +116,31 @@ io.on('connection', (socket) => {
     }
     if (!rooms[roomId]) return
 
+    // admin-only helpers coming from client:
+    if (evt.type === 'readyToggle' || evt.type === 'kick') {
+      // handled inside reducer in game.ts now (we forward the event there also ok)
+    }
+
+    // Mark last action time if current player is acting in an active game
+    try {
+      const st: any = rooms[roomId]
+      if (st?.started) {
+        const cur = st.order?.[st.turnIndex]
+        if (cur && socket.id === cur) lastActionAt[roomId] = Date.now()
+      }
+    } catch {}
+
     const replies = reducer(rooms[roomId] as any, socket.id, evt)
     for (const r of replies) io.to(roomId).emit('event', r)
+
+    // After any state change, (re)schedule the turn timer if applicable
+    scheduleTurnTimer(roomId)
   })
 
   socket.on('disconnect', () => {
     const state = rooms[roomId]
     if (!state) return
+    // Clean up player on disconnect
     if (state.players[socket.id]) {
       delete state.players[socket.id]
       ;(state as any).order = (state as any).order.filter((x: string) => x !== socket.id)
@@ -47,10 +149,13 @@ io.on('connection', (socket) => {
         (state as any).adminId = (state as any).order[0] || ''
       }
       io.to(roomId).emit('event', { type: 'state', state } as ServerEvent)
+      // If we removed someone who was up next/current, re-evaluate timer
+      scheduleTurnTimer(roomId)
     }
   })
 })
 
-httpServer.listen(8787, '0.0.0.0', () =>
-  console.log('Server on http://127.0.0.1:8787 (health: /health)')
+const PORT = Number(process.env.PORT || 8787)
+httpServer.listen(PORT, '0.0.0.0', () =>
+  console.log(`Server on http://127.0.0.1:${PORT} (health: /health)`) 
 )

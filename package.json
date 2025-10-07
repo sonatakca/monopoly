@@ -2,5 +2,10 @@
   "name": "monopolytr",
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
-  "packageManager": "pnpm@9.0.0"
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "start": "pnpm -r start"
+  }
 }

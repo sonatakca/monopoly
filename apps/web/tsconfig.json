@@ -5,6 +5,10 @@
     "moduleResolution": "Bundler",
     "jsx": "preserve",
     "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../../packages/shared/*"]
+    },
     "lib": [
       "dom",
       "dom.iterable",
@@ -25,7 +29,9 @@
   },
   "include": [
     ".",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "../../packages/shared/**/*.ts",
+    "../../packages/shared/**/*.json"
   ],
   "exclude": [
     "node_modules"

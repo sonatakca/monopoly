@@ -1,7 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Optional: silence the dev origin warning if you see it
-  // allowedDevOrigins: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  experimental: { externalDir: true },
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: false },
+  async rewrites() {
+    const API = process.env.NEXT_PUBLIC_API_URL
+    if (!API) return []
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${API}/:path*`,
+      },
+    ]
+  },
 }
 module.exports = nextConfig
