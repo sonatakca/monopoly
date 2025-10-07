@@ -38,6 +38,51 @@ const io = new Server(httpServer, { cors: { origin: ALLOWED } })
 
 const rooms: Record<string, ReturnType<typeof createRoom>> = {}
 
+// --- Turn timeout (30s) management per room -----------------------------
+const turnTimers: Record<string, NodeJS.Timeout | null> = {}
+const timerMeta: Record<string, { at: number; forId: string } | null> = {}
+const lastActionAt: Record<string, number> = {}
+
+function clearTurnTimer(rid: string) {
+  if (turnTimers[rid]) { clearTimeout(turnTimers[rid]!); turnTimers[rid] = null }
+  timerMeta[rid] = null
+}
+
+function scheduleTurnTimer(rid: string) {
+  const state = rooms[rid] as any
+  if (!state?.started) { clearTurnTimer(rid); return }
+  const curId = state.order?.[state.turnIndex]
+  if (!curId) { clearTurnTimer(rid); return }
+  // Only schedule at fresh turn (before any roll)
+  if (state.lastDice) { clearTurnTimer(rid); return }
+  clearTurnTimer(rid)
+  const at = Date.now()
+  timerMeta[rid] = { at, forId: curId }
+  turnTimers[rid] = setTimeout(() => autoPass(rid, at, curId), 30_000)
+}
+
+function autoPass(rid: string, at: number, forId: string) {
+  const meta = timerMeta[rid]
+  const state = rooms[rid] as any
+  if (!meta || !state) return
+  // Stale or wrong room/turn
+  if (meta.at !== at || meta.forId !== forId) return
+  if (!state.started) return
+  const curId = state.order?.[state.turnIndex]
+  if (curId !== forId) return
+  // If player has taken any action since scheduling, don't pass
+  if ((lastActionAt[rid] || 0) > at) return
+  // If dice were rolled, consider as action (no auto-pass)
+  if (state.lastDice) return
+  try {
+    const replies = reducer(state, curId, { type: 'endTurn' } as any)
+    for (const r of replies) io.to(rid).emit('event', r)
+  } finally {
+    // Schedule for next player's turn (if still in play)
+    scheduleTurnTimer(rid)
+  }
+}
+
 io.on('connection', (socket) => {
   console.log('[io] connection:', socket.id)
   let roomId = ''
@@ -76,8 +121,20 @@ io.on('connection', (socket) => {
       // handled inside reducer in game.ts now (we forward the event there also ok)
     }
 
+    // Mark last action time if current player is acting in an active game
+    try {
+      const st: any = rooms[roomId]
+      if (st?.started) {
+        const cur = st.order?.[st.turnIndex]
+        if (cur && socket.id === cur) lastActionAt[roomId] = Date.now()
+      }
+    } catch {}
+
     const replies = reducer(rooms[roomId] as any, socket.id, evt)
     for (const r of replies) io.to(roomId).emit('event', r)
+
+    // After any state change, (re)schedule the turn timer if applicable
+    scheduleTurnTimer(roomId)
   })
 
   socket.on('disconnect', () => {
@@ -92,6 +149,8 @@ io.on('connection', (socket) => {
         (state as any).adminId = (state as any).order[0] || ''
       }
       io.to(roomId).emit('event', { type: 'state', state } as ServerEvent)
+      // If we removed someone who was up next/current, re-evaluate timer
+      scheduleTurnTimer(roomId)
     }
   })
 })

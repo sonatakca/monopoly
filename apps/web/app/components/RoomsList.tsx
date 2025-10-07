@@ -21,7 +21,8 @@ export default function RoomsList({
   me: any
   apiBase?: string
 }) {
-  const API = apiBase || (process.env.NEXT_PUBLIC_API_URL as string) || 'http://127.0.0.1:8787'
+  // Prefer same-origin proxy via Next.js rewrites to avoid mixed-content/CORS in production
+  const API = apiBase || '/api'
   const [rooms, setRooms] = useState<RoomSummary[]>([])
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -85,4 +86,3 @@ export default function RoomsList({
     </section>
   )
 }
-

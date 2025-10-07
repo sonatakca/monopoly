@@ -1,6 +1,7 @@
 import './globals.css'
 import type React from 'react'
 import { Inter } from 'next/font/google'
+import Image from 'next/image'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
 
@@ -11,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="app-header">
           <div className="container app-navbar">
             <div className="brand">
-              <div className="brand-badge" />
+              <Image src="/Monopoly2.PNG" alt="Monopoly" width={3557} height={117} priority style={{ height: 28, width: 'auto', maxWidth: 220, objectFit: 'contain', borderRadius: 6 }} />
               <div>
                 <div className="brand-title">Monopoly</div>
                 <div className="brand-subtle">arkadaşlarınla Monopoly oyna</div>

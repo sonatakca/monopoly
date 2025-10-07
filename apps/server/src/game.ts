@@ -159,12 +159,26 @@ export function canStart(state: any): boolean {
 }
 
 export function start(state: any, byId: string): string | null {
-  if (state.adminId !== byId) return 'Sadece admin başlatabilir.'
+  // Allow game to start automatically when everyone is ready; no admin gate
   if (!canStart(state)) return 'Herkes hazır olmalı ve en az 2 oyuncu gerekir.'
   state.started = true
-  state.phase = 'order' // first: roll to determine play order
-  // order remains join order; they will roll to set final order if you later implement it.
+  state.phase = 'order'
+  // Server-authoritative order roll
+  const entries = (state.order as string[]).filter((id: string) => !!state.players[id]).map((id: string) => {
+    const d1 = 1 + Math.floor(Math.random() * 6)
+    const d2 = 1 + Math.floor(Math.random() * 6)
+    const sum = d1 + d2
+    const hi = Math.max(d1, d2)
+    const name = (state.players[id]?.name || '').toLowerCase()
+    return { id, name, d1, d2, sum, hi }
+  })
+  // Sort by: sum desc, highest single die desc, name asc (deterministic)
+  entries.sort((a, b) => (b.sum - a.sum) || (b.hi - a.hi) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  state.order = entries.map(e => e.id)
   state.turnIndex = 0
+  state.phase = 'play'
+  // Announce results
+  ;(state as any)._orderRoll = entries.map(e => ({ id: e.id, name: state.players[e.id]?.name, d1: e.d1, d2: e.d2, sum: e.sum }))
   return null
 }
 
@@ -343,12 +357,35 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
   if (evt.type === 'start') {
     const err = start(state, playerId)
     if (err) out.push({ type: 'error', text: err })
-    else out.push({ type: 'msg', text: 'Oyun başladı!' })
+    else {
+      out.push({ type: 'msg', text: 'Oyun başladı! Başlangıç sırası belirleniyor…' })
+      const res: any[] = (state as any)._orderRoll || []
+      if (res.length) {
+        const lines = res.map(e => `${e.name}: ${e.d1}+${e.d2}=${e.sum}`)
+        out.push({ type: 'msg', text: `Sıra: ${lines.join(' | ')}` })
+        delete (state as any)._orderRoll
+      }
+    }
     return [...out, { type: 'state', state }]
   }
 
   if (evt.type === 'readyToggle') {
     toggleReady(state, playerId)
+    // Auto-start when everyone is ready and at least 2 players
+    if (!state.started && canStart(state)) {
+      const err = start(state, playerId)
+      if (err) return [{ type: 'error', text: err }, { type: 'state', state }]
+      const res: any[] = (state as any)._orderRoll || []
+      const out: ServerEvent[] = []
+      out.push({ type: 'msg', text: 'Oyun başladı! Başlangıç sırası belirleniyor…' })
+      if (res.length) {
+        const lines = res.map(e => `${e.name}: ${e.d1}+${e.d2}=${e.sum}`)
+        out.push({ type: 'msg', text: `Sıra: ${lines.join(' | ')}` })
+        delete (state as any)._orderRoll
+      }
+      out.push({ type: 'state', state })
+      return out
+    }
     return [{ type: 'state', state }]
   }
 

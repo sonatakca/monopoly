@@ -10,8 +10,8 @@ body { margin: 0 }
   --text: #e7ecf3;
   --muted: #a0a7b3;
   --border: rgba(255,255,255,0.10);
-  --accent: #60a5fa;
-  --accent-2: #93c5fd;
+  --accent: #ef4444; /* Monopoly red */
+  --accent-2: #f87171;
   --danger: #ef4444;
   --success: #22c55e;
   --radius: 14px;
@@ -150,7 +150,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in ok
 :fullscreen { width: 100vw; height: 100vh; margin: 0 !important; padding: 0 !important; background: var(--bg) }
 :fullscreen .scene { width: 100vw !important; height: 100vh !important; border-radius: 0 }
 :fullscreen .r3f-toolbar {
-  position: absolute; inset: 12px auto auto 12px; margin: 0;
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%); margin: 0;
   background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.16);
   border-radius: 10px; padding: 6px 8px; backdrop-filter: blur(6px); z-index: 3;
 }
@@ -159,7 +159,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in ok
 :-webkit-full-screen { width: 100vw; height: 100vh; margin: 0 !important; padding: 0 !important; background: var(--bg) }
 :-webkit-full-screen .scene { width: 100vw !important; height: 100vh !important; border-radius: 0 }
 :-webkit-full-screen .r3f-toolbar {
-  position: absolute; inset: 12px auto auto 12px; margin: 0;
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%); margin: 0;
   background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.16);
   border-radius: 10px; padding: 6px 8px; backdrop-filter: blur(6px); z-index: 3;
 }
