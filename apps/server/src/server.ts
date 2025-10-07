@@ -11,6 +11,7 @@ if (WEB_ORIGIN) ALLOWED.push(WEB_ORIGIN)
 const app = express()
 app.use(cors({ origin: ALLOWED, credentials: false }))
 app.get('/health', (_req: Request, res: Response) => res.send('ok'))
+app.get('/server', (_req, res) => res.send('monopoly server is up'));
 
 // List rooms with at least one player
 app.get('/rooms', (_req: Request, res: Response) => {
