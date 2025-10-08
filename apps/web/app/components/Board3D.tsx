@@ -383,6 +383,136 @@ function TokenMesh({ cfg, position, yaw = 0 }: { cfg: TokenModel; position: [num
     )
 }
 
+// AnimatedToken: smoothly interpolate a token from its previous world position to a new target
+// and add a vertical "hop" arc during the move.
+function AnimatedToken({
+    id,
+    cfg,
+    fromTile,
+    toTile,
+    slot,
+    S,
+    dir,
+    rot,
+    placementOverrides,
+    placementAliases,
+    tokenBaseY,
+    getGapY,
+    zoneTag,
+    yaw
+}: {
+    id: string
+    cfg: TokenModel
+    fromTile: number
+    toTile: number
+    slot: number
+    S: number
+    dir: PathDirection
+    rot: 0 | 90 | 180 | 270
+    placementOverrides?: PlacementOverrides
+    placementAliases?: Record<number, number>
+    tokenBaseY: number
+    getGapY: (nameKey: string | null) => number
+    zoneTag?: 'v' | 'j'
+    yaw: number
+}) {
+    const stateRef = useRef<{ stepIndex: number; start: number; fromPos: [number, number, number]; toPos: [number, number, number]; path: number[]; _renderPos?: [number, number, number] } | null>(null)
+    const [, tick] = useState(0)
+
+    const nameKey = useMemo(() => nameKeyFromUrl(cfg.url), [cfg.url])
+    const baseY = tokenBaseY + (cfg.y ?? 0) + (cfg.offsetY ?? 0) + getGapY(nameKey)
+
+    // build path of tiles from fromTile (exclusive) to toTile (inclusive) stepping forward
+    const buildPath = (from: number, to: number) => {
+        if (from === to) return []
+        const out: number[] = []
+        let cur = from
+        // step forward until reach to (mod 40)
+        for (let i = 0; i < 40; i++) {
+            cur = (cur + 1) % 40
+            out.push(cur)
+            if (cur === to) break
+        }
+        return out
+    }
+
+    // helper to compute world pos for a tile+slot
+    const posForTile = (tile: number): [number, number, number] => {
+        const sourceIndex = placementAliases?.[tile] ?? tile
+        const ov = placementOverrides?.[sourceIndex]?.[slot]
+        const zone = (sourceIndex === 10) ? zoneTag : undefined
+        const [px, pz] = (ov && sourceIndex !== 10) ? ov : positionFor(tile, slot, S, dir, rot, zone)
+        const py = baseY
+        return [px, py, pz]
+    }
+
+    // ensure stateRef initialized
+    if (!stateRef.current) {
+        const initial = posForTile(fromTile)
+        stateRef.current = { stepIndex: 0, start: 0, fromPos: initial, toPos: posForTile(toTile), path: buildPath(fromTile, toTile) }
+    }
+
+    // When fromTile/toTile change, rebuild the path and start animation from current pos
+    useEffect(() => {
+        const cur = stateRef.current!
+        const currentPos = cur.toPos || posForTile(fromTile)
+        const path = buildPath(fromTile, toTile)
+        // If no movement, snap to final
+        if (path.length === 0) {
+            cur.stepIndex = 0
+            cur.start = 0
+            cur.fromPos = posForTile(toTile)
+            cur.toPos = posForTile(toTile)
+            tick(s => s + 1)
+            return
+        }
+        cur.path = path
+        cur.stepIndex = 0
+        cur.start = performance.now()
+        cur.fromPos = currentPos
+        cur.toPos = posForTile(path[0])
+        tick(s => s + 1)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fromTile, toTile, slot, S, dir, rot, placementOverrides, placementAliases, tokenBaseY, cfg.url, zoneTag])
+
+    useFrame(() => {
+        const cur = stateRef.current!
+        if (!cur) return
+        const now = performance.now()
+        const duration = 340 // ms per hop
+        const elapsed = Math.max(0, now - cur.start)
+        const tRaw = Math.min(1, duration <= 0 ? 1 : elapsed / duration)
+        const t = 1 - Math.pow(1 - tRaw, 3)
+        const nx = cur.fromPos[0] + (cur.toPos[0] - cur.fromPos[0]) * t
+        const nz = cur.fromPos[2] + (cur.toPos[2] - cur.fromPos[2]) * t
+        const hopHeight = 0.22
+        const ny = cur.fromPos[1] + Math.sin(Math.PI * t) * hopHeight
+        // write a temporary pos so TokenMesh can render
+        cur._renderPos = [nx, ny, nz]
+        if (tRaw >= 1) {
+            // advance to next step or finish
+            const nextIndex = cur.stepIndex + 1
+            if (nextIndex < (cur.path?.length || 0)) {
+                const nextTile = cur.path[nextIndex]
+                cur.stepIndex = nextIndex
+                cur.fromPos = posForTile(cur.path[nextIndex - 1])
+                cur.toPos = posForTile(nextTile)
+                cur.start = now
+            } else {
+                // finished full path
+                cur.fromPos = posForTile(cur.path[cur.path.length - 1])
+                cur.toPos = posForTile(cur.path[cur.path.length - 1])
+                cur._renderPos = cur.toPos
+                cur.start = 0
+            }
+        }
+    })
+
+    const cur = stateRef.current!
+    const renderPos: [number, number, number] = (cur && (cur as any)._renderPos) ? (cur as any)._renderPos : cur.toPos
+    return <TokenMesh cfg={cfg} position={renderPos} yaw={yaw} />
+}
+
 // Removed AnimatedToken (old movement); tokens update via state changes only
 
 /* Position helper (fallback) */
@@ -1738,7 +1868,23 @@ function Board3D({
                                     </group>
                                 ) : null}
                             >
-                                <TokenMesh cfg={cfg} position={[x, y, z]} yaw={yaw} />
+                                {/* Use AnimatedToken so the token hops when moving between tiles */}
+                                <AnimatedToken
+                                    id={p.id}
+                                    cfg={cfg}
+                                    fromTile={p.position}
+                                    toTile={tileIndex}
+                                    slot={slot}
+                                    S={topSize}
+                                    dir={pathDirection}
+                                    rot={indexRotation}
+                                    placementOverrides={placementOverrides}
+                                    placementAliases={placementAliases}
+                                    tokenBaseY={tokenBaseY}
+                                    getGapY={getGapY}
+                                    zoneTag={zoneTag}
+                                    yaw={yaw}
+                                />
                             </Suspense>
                         )
                     }

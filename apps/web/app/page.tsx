@@ -465,6 +465,30 @@ const PERMA_JAIL_RAW: Record<string, [number, number][]> = {
   ]
 }
 
+// === BUY PAGE ACCENTS BY TILE ===
+const BUY_ACCENT_BY_TILE: Record<number, string> = {
+  // 1–3
+  1: '#693B27', 2: '#693B27', 3: '#693B27',
+  // 6–8–9
+  6: '#789DB0', 8: '#789DB0', 9: '#789DB0',
+  // 11–13–14
+  11: '#992B69', 13: '#992B69', 14: '#992B69',
+  // 16–18–19
+  16: '#AE671A', 18: '#AE671A', 19: '#AE671A',
+  // 21–23–24
+  21: '#A91A1E', 23: '#A91A1E', 24: '#A91A1E',
+  // 26–27–29
+  26: '#B3AB0F', 27: '#B3AB0F', 29: '#B3AB0F',
+  // 31–32–34
+  31: '#1A7D3F', 32: '#1A7D3F', 34: '#1A7D3F',
+  // 37–39 (note: 38 is not a property)
+  37: '#105083', 39: '#105083',
+  // Stations
+  5: '#0F0F0F', 15: '#0F0F0F', 25: '#0F0F0F', 35: '#0F0F0F',
+  // Utilities
+  12: '#98A496', 28: '#98A496',
+}
+
 // Fallback if permanent placements data is commented out above
 const PERMA_PLACEMENTS_RAW: Record<string, [number, number][]> = {}
 
@@ -496,6 +520,21 @@ export default function Home() {
   const [roomId, setRoomId] = useState('oda-1')
   // Fullscreen handling for 3D panel
   const scenePanelRef = useRef<HTMLDivElement | null>(null)
+  const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const host = scenePanelRef.current
+    if (!host) return
+    // try to grab the first three/fiber canvas
+    const c = host.querySelector('canvas') as HTMLCanvasElement | null
+    sceneCanvasRef.current = c
+
+    // If your canvas mounts later (suspense), try again on next frame:
+    if (!c) requestAnimationFrame(() => {
+      const late = host.querySelector('canvas') as HTMLCanvasElement | null
+      if (late) sceneCanvasRef.current = late
+    })
+  }, [])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const prevScrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const prevSceneSizeRef = useRef<{ w: number; h: number } | null>(null)
@@ -888,6 +927,120 @@ export default function Home() {
     } catch { return false }
   }, [isMyTurn, canEndTurn, myTile, state?.players])
 
+  // --- Buy modal state: shows after a roll when landing on an unowned buyable space ---
+  const [buyModal, setBuyModal] = useState<{ tile: number; progress: number } | null>(null)
+  const buyTimerRef = useRef<number | null>(null)
+  function stopBuyTimer() {
+    if (buyTimerRef.current != null) {
+      cancelAnimationFrame(buyTimerRef.current as number)
+      buyTimerRef.current = null
+    }
+  }
+  const buyModalSeenKey = useRef<string | null>(null)
+  const FADE_MS = 220
+  const [buyVisible, setBuyVisible] = useState(false)
+
+  // When a buy modal mounts, flip visible on next frame so CSS transitions run
+  useEffect(() => {
+    if (buyModal) requestAnimationFrame(() => setBuyVisible(true))
+  }, [buyModal])
+
+  function closeBuyModal(after?: () => void) {
+    setBuyVisible(false)
+    stopBuyTimer()
+    window.setTimeout(() => {
+      setBuyModal(null)   // ← unmount after fade
+      after?.()           // ← caller decides what to send
+    }, FADE_MS)
+  }
+
+  const forwardWheelToCanvas = (e: React.WheelEvent) => {
+    const c = sceneCanvasRef.current
+    if (!c) return
+    // Re-fire a synthetic wheel event on the canvas so zoom still works
+    const evt = new WheelEvent('wheel', {
+      deltaX: e.deltaX,
+      deltaY: e.deltaY,
+      deltaZ: e.deltaZ,
+      deltaMode: e.deltaMode,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      bubbles: true,
+      cancelable: true
+    })
+    c.dispatchEvent(evt)
+    e.preventDefault()
+  }
+
+
+
+  // open modal once per dice key when appropriate
+  useEffect(() => {
+    try {
+      if (!isMyTurn) return
+      const d = state?.lastDice
+      if (!d) return
+      const key = `${d.d1}-${d.d2}-${d.isDouble}`
+      const tile = me?.position
+      if (key && tile != null && buyModalSeenKey.current !== key) {
+        const sp: any = (board as any).spaces?.[tile]
+        const t = sp?.type
+        const isBuyable = t === 'PROPERTY' || t === 'STATION' || t === 'UTILITY'
+        const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
+        if (isBuyable && !hasOwner) {
+          buyModalSeenKey.current = key
+          setBuyModal({ tile, progress: 0 })
+        }
+      }
+    } catch { }
+  }, [state?.lastDice, isMyTurn, me?.position, state?.players])
+
+  // timer effect for modal (30s) — use tile as the stable dependency
+  useEffect(() => {
+    const tile = buyModal?.tile
+    if (tile == null) return
+
+    let stopped = false
+    const DURATION = 30_000
+    const start = performance.now()
+
+    const tick = (now: number) => {
+      if (stopped) return
+      const prog = Math.min(1, (now - start) / DURATION)
+
+      // Only update if we're still on the same tile
+      setBuyModal(b => (b && b.tile === tile) ? { ...b, progress: prog } : b)
+
+      if (prog < 1) {
+        buyTimerRef.current = requestAnimationFrame(tick)
+      } else {
+        closeBuyModal(() => send({ type: 'decline' } as any))
+      }
+
+    }
+
+    buyTimerRef.current = requestAnimationFrame(tick)
+    return () => { stopped = true; stopBuyTimer() }
+  }, [buyModal?.tile])
+
+
+
+  // Close modal if tile becomes owned by anyone (sync with server)
+  useEffect(() => {
+    if (!buyModal) return
+    const sp: any = (board as any).spaces?.[buyModal.tile]
+    const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
+    if (hasOwner) {
+      closeBuyModal()
+    }
+
+  }, [state?.players, buyModal])
+
+
   return (
     <main style={{ padding: '24px 28px' }}>
       <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>Monopoly</h1>
@@ -1007,18 +1160,256 @@ export default function Home() {
                   {canRoll && (
                     <button className="btn" onClick={handleRollClick}>Zar At</button>
                   )}
-                  {showAuction ? (
-                    <button className="btn" onClick={() => send({ type: 'decline' } as any)}>Açık arttırma</button>
-                  ) : (
+                  {showAuction ? null : (
                     canEndTurn ? (
                       <button className="btn" onClick={() => send({ type: 'endTurn' } as any)}>Sırayı Bitir</button>
                     ) : null
                   )}
+
                 </div>
               </div>
             )}
+            {/* Buy modal overlay — modern card */}
+            {buyModal && (() => {
+              const sp: any = (board as any).spaces?.[buyModal.tile]
+              if (!sp) return null
+
+              // Accent color from explicit tile mapping; fallback per type
+              const tileId = buyModal.tile
+              const accent =
+                BUY_ACCENT_BY_TILE[tileId] ??
+                (sp?.type === 'STATION'
+                  ? '#0F0F0F'
+                  : sp?.type === 'UTILITY'
+                    ? '#98A496'
+                    : '#6366f1')
+
+
+              const price = Number(sp?.price || 0)
+              const playerCash = me?.cash ?? 0
+              const canBuyNow = playerCash >= price
+
+              // Circular timer: same green → red color as the linear bar
+              const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1 → 0
+              const secondsLeft = Math.ceil(remaining * 30)
+              const angle = Math.round(remaining * 360) // arc length
+              const hue = Math.round(120 * remaining)   // 120 (green) → 0 (red)
+              const ringColor = `hsl(${hue} 80% 48%)`
+              const ringBg = `conic-gradient(${ringColor} ${angle}deg, rgba(255,255,255,0.15) 0deg)`
+
+
+              const doBuy = () => closeBuyModal(() => send({ type: 'buy' } as any))
+              const doAuction = () => closeBuyModal(() => send({ type: 'decline' } as any))
+
+              const glass = 'rgba(17,24,39,0.60)' // slate-900 @60%
+              const border = '1px solid rgba(255,255,255,0.14)'
+
+              const solidBtn = (enabled: boolean): React.CSSProperties => ({
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.14)',
+                background: enabled
+                  ? `linear-gradient(135deg, ${accent}, rgba(255,255,255,0.07) 70%)`
+                  : 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                fontWeight: 800,
+                letterSpacing: 0.2,
+                cursor: enabled ? 'pointer' : 'not-allowed',
+                boxShadow: enabled ? '0 6px 24px rgba(0,0,0,0.35)' : 'none',
+                transition: 'transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease',
+                opacity: enabled ? 1 : 0.65
+              })
+
+              const ghostBtn: React.CSSProperties = {
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.14)',
+                background: 'rgba(255,255,255,0.06)',
+                color: '#fff',
+                fontWeight: 800,
+                letterSpacing: 0.2,
+                cursor: 'pointer',
+                transition: 'transform 120ms ease, box-shadow 120ms ease',
+              }
+
+              return (
+                // NEW overlay that fills the 3D panel and centers the card
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 60,
+                    display: 'grid',
+                    placeItems: 'center',
+                    pointerEvents: 'none', // ← let the 3D canvas keep receiving input outside the card
+                  }}
+                >
+                  {/* Your card stays the same, but add pointerEvents:'auto' so it’s clickable */}
+                  <div
+                    onWheel={forwardWheelToCanvas}
+                    style={{
+                      width: 380,
+                      borderRadius: 16,
+                      overflow: 'hidden',
+                      color: '#fff',
+                      background: 'rgba(17,24,39,0.60)',
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      boxShadow: '0 10px 42px rgba(0,0,0,0.35)',
+                      pointerEvents: 'auto', // ← important
+                      opacity: buyVisible ? 1 : 0,
+                      transform: buyVisible ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.98)',
+                      transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
+                      willChange: 'opacity, transform',
+                    }}
+                  >
+
+
+                    <div
+                      style={{
+                        width: 380,
+                        borderRadius: 16,
+                        overflow: 'hidden',
+                        color: '#fff',
+                        background: glass,
+                        border,
+                        boxShadow: '0 10px 42px rgba(0,0,0,0.35)',
+                        backdropFilter: getDevFlag('disableBackdropBlur' as any) ? 'none' : 'blur(10px)'
+                      }}
+                    >
+                      {/* Header */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: 12,
+                          background: `linear-gradient(90deg, ${accent} 0%, rgba(255,255,255,0.10) 100%)`,
+                          borderBottom: '1px solid rgba(255,255,255,0.14)'
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 900, fontSize: 16, lineHeight: '20px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                            {sp.name}
+                          </div>
+                          <div style={{ opacity: 0.85, fontSize: 12 }}>
+                            {sp.type === 'PROPERTY' ? 'Mülk' : sp.type === 'STATION' ? 'İstasyon' : sp.type === 'UTILITY' ? 'Kamu Hizmeti' : 'Satın alınabilir'}
+                          </div>
+                        </div>
+                        {/* radial countdown */}
+                        <div
+                          style={{
+                            width: 50,
+                            height: 50,
+                            borderRadius: '9999px',
+                            background: ringBg,
+                            display: 'grid',
+                            placeItems: 'center',
+                            willChange: 'background'
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: '9999px',
+                              background: 'rgba(0,0,0,0.55)',
+                              display: 'grid',
+                              placeItems: 'center',
+                              fontWeight: 900,
+                              fontSize: 12,
+                              boxShadow: `0 0 0 2px ${ringColor}22 inset`
+                            }}
+                          >
+                            {secondsLeft}s
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Body */}
+                      <div style={{ display: 'flex', gap: 12, padding: 12 }}>
+                        <div style={{ flex: '0 0 auto' }}>
+                          <PropertyCard id={buyModal.tile} side={'f'} width={140} />
+                        </div>
+                        <div style={{ flex: 1, display: 'grid', gap: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                            <span style={{ opacity: 0.9 }}>Fiyat</span>
+                            <span style={{ fontWeight: 800 }}>{price}₺</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                            <span style={{ opacity: 0.9 }}>Cüzdanın</span>
+                            <span style={{ fontWeight: 800, color: canBuyNow ? '#34d399' : '#f87171' }}>{playerCash}₺</span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                            <button
+                              className="btn"
+                              onClick={doBuy}
+                            >
+                              Satın Al
+                            </button>
+                            <button
+                              className="btn"
+                              onClick={doAuction}
+                              style={ghostBtn}
+                              onMouseDown={(e) => (e.currentTarget.style.transform = 'translateY(1px)')}
+                              onMouseUp={(e) => (e.currentTarget.style.transform = '')}
+                            >
+                              Açık Arttırma
+                            </button>
+                          </div>
+
+                          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                            {canBuyNow ? 'Satın almak için tıkla' : 'Yetersiz bakiye'} • Açık arttırma ile herkese şans ver
+                          </div>
+
+                          {/* Countdown bar: full → 0 with smooth transform and solid color shift */}
+                          {(() => {
+                            const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1→0
+                            const hue = Math.round(120 * remaining) // 120=green → 0=red
+                            const barColor = `hsl(${hue} 80% 48%)`
+
+                            const track: React.CSSProperties = {
+                              position: 'relative',
+                              height: 8,
+                              background: 'rgba(255,255,255,0.10)',
+                              borderRadius: 6,
+                              overflow: 'hidden',
+                              marginTop: 2,
+                              border: '1px solid rgba(255,255,255,0.08)'
+                            }
+
+                            const fill: React.CSSProperties = {
+                              position: 'absolute',
+                              inset: 0,                  // full size; we scale it
+                              background: barColor,      // solid color (no gradient)
+                              transform: `scaleX(${remaining})`,
+                              transformOrigin: 'left center',
+                              transition: 'transform 180ms cubic-bezier(0.22,1,0.36,1), background-color 140ms linear',
+                              willChange: 'transform',
+                              backfaceVisibility: 'hidden'
+                            }
+
+                            return (
+                              <div style={track} aria-label="Kalan süre">
+                                <div style={fill} />
+                              </div>
+                            )
+                          })()}
+
+
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </>
-        )}
+        )
+        }
         {/* Optional property card overlay for current tile (dev toggle) */}
         {getDevFlag('showPropertyCard' as any) && (() => {
           const tile = me?.position ?? null
@@ -1075,7 +1466,7 @@ export default function Home() {
         )}
       </div>
       {/* Legacy game action buttons removed for order-based flow */}
-    </main>
+    </main >
   )
 }
 
