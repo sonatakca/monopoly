@@ -439,7 +439,7 @@ function AnimatedToken({ id, cfg, to, yaw }: { id: string; cfg: TokenModel; to: 
     return <TokenMesh cfg={cfg} position={curPos} yaw={yaw} />
 }
 
-type RouteStep = { to: [number, number, number]; yaw: number }
+type RouteStep = { to: [number, number, number]; yaw: number; style?: 'hop' | 'linear' }
 
 function RouteAnimatedToken({
     id,
@@ -474,6 +474,7 @@ function RouteAnimatedToken({
         yawTo: number
         start: number
         queue: RouteStep[]
+        style: 'hop' | 'linear'
     } | null>(null)
     const [, force] = useState(0)
 
@@ -493,6 +494,7 @@ function RouteAnimatedToken({
                 yawTo: yawRef.current,
                 start: 0,
                 queue: q,
+                style: 'hop',
             }
         } else {
             animRef.current.queue = q
@@ -521,6 +523,7 @@ function RouteAnimatedToken({
                 st.yawTo = Math.atan2(st.to[0] - st.from[0], st.to[2] - st.from[2])
                 st.start = performance.now()
                 st.active = true
+                st.style = next.style || 'hop'
                 // Call onStart only once per route (not every hop)
                 if (!routeStartedRef.current) {
                     routeStartedRef.current = true
@@ -546,12 +549,15 @@ function RouteAnimatedToken({
         const wrap = (a: number) => (a + Math.PI * 3) % (Math.PI * 2) - Math.PI
         const dy = wrap(st.yawTo - st.yawFrom)
         const yaw = wrap(st.yawFrom + dy * t)
+        const ny2 = ((animRef.current?.style || 'hop') === 'linear')
+            ? (st.from[1] + (st.to[1] - st.from[1]) * t)
+            : ny
 
         // Mutate wrapper group transform each frame so inner mesh stays at origin
-        posRef.current = [nx, ny, nz]
+        posRef.current = [nx, ny2, nz]
         yawRef.current = yaw
         if (groupRef.current) {
-            groupRef.current.position.set(nx, ny, nz)
+            groupRef.current.position.set(nx, ny2, nz)
             groupRef.current.rotation.y = yaw
         }
 
@@ -720,7 +726,7 @@ const BAKED_ZONE_TRANSFORMS: Record<string, ZoneTransform> = (() => {
     try {
         if (Array.isArray(BAKED_ZONES_DUMP) && BAKED_ZONES_DUMP.length) {
             for (const it of BAKED_ZONES_DUMP) {
-                if (!it || typeof it.tile !== 'number') continue
+                if (!it) continue
                 const t = it.transform || {}
                 m[String(it.tile)] = {
                     dx: t.dx || 0,
@@ -737,8 +743,26 @@ const BAKED_ZONE_TRANSFORMS: Record<string, ZoneTransform> = (() => {
     } catch { }
     return m
 })()
+function hasDevZonesInStorage(): boolean {
+    try {
+        if (typeof window === 'undefined') return false
+        const raw = localStorage.getItem(ZONES_TX_KEY)
+        if (!raw) return false
+        const obj = JSON.parse(raw)
+        return !!obj && typeof obj === 'object' && Object.keys(obj).length > 0
+    } catch { return false }
+}
 function shouldUseDevZoneJson(): boolean {
-    return getDevFlag('useDevZoneJson') || getDevFlag('tileZones') || getDevFlag('editZones')
+    // Prefer runtime/dev JSON when:
+    // - explicit flags OR
+    // - any dev zones exist in localStorage (so tokens honor saved edits even without flags)
+    return (
+        getDevFlag('useDevZoneJson') ||
+        getDevFlag('tileZones') ||
+        getDevFlag('editZones') ||
+        getDevFlag('showZones') ||
+        hasDevZonesInStorage()
+    )
 }
 function readTxMap(): Record<string, ZoneTransform> {
     try {
@@ -873,9 +897,9 @@ function ensureDevZonesAPI() {
             try {
                 if (!Array.isArray(arr)) { console.warn('[Dev] applyDump expects array'); return }
                 for (const it of arr) {
-                    if (!it || typeof it.tile !== 'number') continue
+                    if (!it) continue
                     const t = it.transform || {}
-                    setZoneTx(it.tile, t)
+                    if (typeof it.key === "string" && (it.key === "10v" || it.key === "10j")) { setZoneTxKey(it.key, t) } else if (typeof it.tile === "number") { setZoneTx(it.tile, t) }
                 }
                 console.log('[Dev] zones applied from dump:', arr.length)
             } catch (e) { console.warn('[Dev] zones.applyDump failed', e) }
@@ -1317,6 +1341,10 @@ function Board3D({
     const fromPropsPreset = allPresets[safeIndex]
     const activePreset = waitingMode ? waitingPreset : fromPropsPreset
     const instant = waitingMode
+    const completeTimersRef = useRef<Record<string, number | null>>({})
+    Board3D
+
+
 
     // WebGL renderer ref for dynamic pixel ratio tweaks during interaction
     const glRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -1424,7 +1452,7 @@ function Board3D({
                     const slotYaw = (slotArr && slotArr[2]) ? slotArr[2] : 0
                     zones.push({ zone: s + 1, position: [x, z], x, z, yaw: baseYaw + groupYaw + slotYaw, baseYaw, groupYaw, slotYaw })
                 }
-                all.push({ tile: ti, rect, transform: tx, zones })
+                all.push({ tile: ti, label: String(ti), rect, transform: tx, zones }); if (ti === 10) { const tv = getZoneTxKey("10v"); const tj = getZoneTxKey("10j"); if (tv && (tv.dx || tv.dz || tv.rot || tv.yaw || tv.slots)) { all.push({ key: "10v", label: "10v", tile: 10, rect, transform: tv }) } if (tj && (tj.dx || tj.dz || tj.rot || tj.yaw || tj.slots)) { all.push({ key: "10j", label: "10j", tile: 10, rect, transform: tj }) } }
             }
             try { console.log('[MonopolyDev] zones dump', all) } catch { }
             return all
@@ -1541,8 +1569,8 @@ function Board3D({
                 lastSeenTileRef.current[p.id] = tileNow;
                 continue;
             }
-
-            if (lastSeen !== tileNow && !movingRef.current.has(p.id)) {
+            const hasActiveRoute = (routeCacheRef.current[p.id] || []).length > 0
+            if (lastSeen !== tileNow && !hasActiveRoute) {
                 // Seed "previous" so the first movement actually animates.
                 prevTileRef.current[p.id] = lastSeen;
                 lastTileRef.current[p.id] = lastSeen;
@@ -1555,7 +1583,7 @@ function Board3D({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [plist, displayOffset, pathDirection, indexRotation]);
-    const FORCE_NON_PROP = useMemo(() => new Set<number>([5, 15, 25, 35, 12, 28, 2, 7, 17, 22, 33, 36, 4, 38]), [])
+    const FORCE_NON_PROP = useMemo(() => new Set<number>([2, 7, 17, 22, 33, 36, 4, 38]), [])
     const HIGHLIGHT_EXCLUDED = useMemo(() => new Set<number>([0, 10, 20, 30, 2, 4, 7, 17, 22, 33, 36, 38]), [])
     const [tzMap, setTzMap] = useState<TileZones>(() => readTileZones())
     const tileZoneInitRef = useRef(true)
@@ -1614,7 +1642,7 @@ function Board3D({
                 if (!useDevZoneJson) { console.warn('[tileZones] applyDump ignored because useDevZoneJson flag is disabled'); return }
                 const m: TileZones = {}
                 for (const it of arr) {
-                    if (!it || typeof it.tile !== 'number') continue
+                    if (!it) continue
                     const t = String(it.tile)
                     m[t] = {}
                     if (it.hz && typeof it.hz === 'object') (m[t] as any).hz = it.hz
@@ -2040,7 +2068,8 @@ function Board3D({
                     }
 
                     // If not already moving, (re)compute a route from prev -> tileIndex
-                    if (!movingRef.current.has(p.id)) {
+                    const hasActiveRoute = (routeCacheRef.current[p.id] || []).length > 0
+                    if (!hasActiveRoute) {
                         // Skip zero-hop moves entirely
                         if (prev === tileIndex) {
                             // small dev log when debugRoutes enabled (guarded)
@@ -2128,37 +2157,39 @@ function Board3D({
                                         route={route}
                                         initialFrom={startFrom}
                                         initialYaw={startYaw}
-                                        stepMs={260}
-                                        hopHeight={0.20}
+                                        stepMs={222}
+                                        hopHeight={0.40}
                                         onStart={() => {
+                                            // cancel any previously scheduled "complete" from an earlier hop
+                                            const t = completeTimersRef.current[p.id]
+                                            if (t) { clearTimeout(t); completeTimersRef.current[p.id] = null }
+
                                             movingRef.current.add(p.id)
                                             onTokenRouteStart?.(p.id)
                                         }}
                                         onDone={() => {
-                                            const finish = () => {
-                                                // commit the new tile only when finished
-                                                prevTileRef.current[p.id] = tileIndex
-                                                lastTileRef.current[p.id] = tileIndex
-                                                delete lastProcessedTargetRef.current[p.id]
+                                            // Commit final tile + clear caches
+                                            prevTileRef.current[p.id] = tileIndex
+                                            lastTileRef.current[p.id] = tileIndex
+                                            delete lastProcessedTargetRef.current[p.id]
+                                            delete routeCacheRef.current[p.id]
+                                            delete fromCacheRef.current[p.id]
+                                            delete yawFromCacheRef.current[p.id]
 
-                                                // 🔁 release the moving lock *after* the delay
+                                            // Clear any pending completion and schedule a single debounced one
+                                            const prevTimer = completeTimersRef.current[p.id]
+                                            if (prevTimer) {
+                                                clearTimeout(prevTimer)
+                                                completeTimersRef.current[p.id] = null
+                                            }
+
+                                            const delay = Math.max(0, routeCompleteDelayMs ?? 0)
+                                            completeTimersRef.current[p.id] = window.setTimeout(() => {
                                                 movingRef.current.delete(p.id)
-
-                                                // clear caches for next move
-                                                delete routeCacheRef.current[p.id]
-                                                delete fromCacheRef.current[p.id]
-                                                delete yawFromCacheRef.current[p.id]
-
+                                                completeTimersRef.current[p.id] = null
                                                 onTokenRouteComplete?.(p.id)
-                                            }
-
-                                            if (routeCompleteDelayMs > 0) {
-                                                setTimeout(finish, routeCompleteDelayMs)
-                                            } else {
-                                                finish()
-                                            }
+                                            }, delay) as any
                                         }}
-
                                     />
                                     {debugOn && <RouteDebugger id={p.id} start={startFrom} steps={route} />}
                                 </>
@@ -2213,10 +2244,6 @@ function Board3D({
 }
 
 export default memo(Board3D)
-
-
-
-
 
 
 

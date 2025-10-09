@@ -912,11 +912,15 @@ export default function Home() {
   // Turn controls: allow roll if no dice yet, or doubles rolled; allow end turn if rolled and not doubles
   const canRoll = !!(isMyTurn && (!((state as any)?.lastDice) || ((state as any)?.lastDice?.isDouble === true)))
   const canEndTurn = !!(isMyTurn && !!((state as any)?.lastDice) && ((state as any)?.lastDice?.isDouble !== true))
+  const [animatingRoute, setAnimatingRoute] = useState(false)
   // If landed on an unowned buyable tile, show only auction instead of end-turn
   const myTile = me?.position
   const showAuction = useMemo(() => {
     try {
       if (!isMyTurn || !canEndTurn) return false
+      // add this line:
+      if (animatingRoute) return false
+
       if (myTile == null) return false
       const sp: any = (board as any).spaces?.[myTile]
       const t = sp?.type
@@ -925,7 +929,8 @@ export default function Home() {
       const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
       return !hasOwner
     } catch { return false }
-  }, [isMyTurn, canEndTurn, myTile, state?.players])
+  }, [isMyTurn, canEndTurn, myTile, state?.players, animatingRoute])  // include animatingRoute in deps
+
 
   // --- Buy modal state: shows after a roll when landing on an unowned buyable space ---
   const [buyModal, setBuyModal] = useState<{ tile: number; progress: number } | null>(null)
@@ -939,6 +944,8 @@ export default function Home() {
   const buyModalSeenKey = useRef<string | null>(null)
   const FADE_MS = 220
   const [buyVisible, setBuyVisible] = useState(false)
+  // Additional render gate: delay mounting the overlay for 2000ms
+  const [buyRenderReady, setBuyRenderReady] = useState(false)
   const [animatingMyMove, setAnimatingMyMove] = useState(false)
   const pendingBuyTileRef = useRef<number | null>(null)
   const pendingBuyTimerRef = useRef<number | null>(null)
@@ -950,6 +957,14 @@ export default function Home() {
   useEffect(() => {
     if (buyModal) requestAnimationFrame(() => setBuyVisible(true))
   }, [buyModal])
+
+  // Delay showing the overlay content by 2000ms after buyModal is set
+  useEffect(() => {
+    if (!buyModal) { setBuyRenderReady(false); return }
+    setBuyRenderReady(false)
+    const id = window.setTimeout(() => setBuyRenderReady(true), 0)
+    return () => { clearTimeout(id) }
+  }, [buyModal?.tile])
 
   function closeBuyModal(after?: () => void) {
     setBuyVisible(false)
@@ -1005,17 +1020,17 @@ export default function Home() {
       // mark this dice result as handled
       buyModalSeenKey.current = key
 
-      // delay UI if token still animating — remember the tile
+      // Always set pending tile, and cancel any previously scheduled open
+      pendingBuyTileRef.current = tile
+      if (pendingBuyTimerRef.current) { clearTimeout(pendingBuyTimerRef.current as any); pendingBuyTimerRef.current = null }
+
+      // If currently animating, defer opening until route completes; otherwise, open after a small delay
       if (animatingMyMove) {
-        pendingBuyTileRef.current = tile
         return
       }
-
-      // no animation — open now but add +100ms
-      if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
       pendingBuyTimerRef.current = window.setTimeout(() => {
         setBuyModal({ tile, progress: 0 })
-      }, 100)
+      }, 100) as any
     } catch { }
   }, [state?.lastDice, isMyTurn, me?.position, state?.players, animatingMyMove])
 
@@ -1154,17 +1169,28 @@ export default function Home() {
               pathDirection="counterclockwise"
               displayOffset={0}
 
-              onTokenRouteStart={(pid) => { if (pid === socket.id) setAnimatingMyMove(true) }}
+
+
+              routeCompleteDelayMs={1000}
+              onTokenRouteStart={(pid) => {
+                if (pid === socket.id) {
+                  setAnimatingRoute(true);
+                  setAnimatingMyMove(true);           // ← add this
+                }
+              }}
               onTokenRouteComplete={(pid) => {
                 if (pid === socket.id) {
-                  setAnimatingMyMove(false)
-                  if (pendingBuyTileRef.current != null) {
-                    if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
+                  setAnimatingRoute(false);
+                  setAnimatingMyMove(false);          // ← add this
+
+                  // If we deferred opening the modal during the hop, open it now (+100ms)
+                  const t = pendingBuyTileRef.current;
+                  if (t != null) {
+                    pendingBuyTileRef.current = null;
+                    if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current as any);
                     pendingBuyTimerRef.current = window.setTimeout(() => {
-                      const t = pendingBuyTileRef.current
-                      pendingBuyTileRef.current = null
-                      if (t != null) setBuyModal({ tile: t, progress: 0 })
-                    }, 100) // +100ms after animation
+                      setBuyModal({ tile: t, progress: 0 });
+                    }, 100);
                   }
                 }
               }}
@@ -1190,7 +1216,7 @@ export default function Home() {
                 </Suspense>
               )}
             </Board3D>
-            {isMyTurn && (
+            {isMyTurn && !animatingRoute && (
               <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)' }}>
                   {canRoll && (
@@ -1206,7 +1232,7 @@ export default function Home() {
               </div>
             )}
             {/* Buy modal overlay — modern card */}
-            {buyModal && (() => {
+            {buyModal && buyRenderReady && !animatingMyMove && (() => {
               const sp: any = (board as any).spaces?.[buyModal.tile]
               if (!sp) return null
 
@@ -1505,10 +1531,6 @@ export default function Home() {
     </main >
   )
 }
-
-
-
-
 
 
 
