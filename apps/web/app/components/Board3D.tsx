@@ -69,9 +69,13 @@ type Props = {
 
     placementOverrides?: PlacementOverrides
     placementAliases?: Record<number, number>
-    /** Optional per-token (by model name key, e.g., CAT) Y gaps above the board. */
+
     tokenGapsY?: Record<string, number>
     children?: ReactNode
+
+    onTokenRouteStart?: (playerId: string) => void
+    onTokenRouteComplete?: (playerId: string) => void
+    routeCompleteDelayMs?: number
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -385,133 +389,234 @@ function TokenMesh({ cfg, position, yaw = 0 }: { cfg: TokenModel; position: [num
 
 // AnimatedToken: smoothly interpolate a token from its previous world position to a new target
 // and add a vertical "hop" arc during the move.
-function AnimatedToken({
-    id,
-    cfg,
-    fromTile,
-    toTile,
-    slot,
-    S,
-    dir,
-    rot,
-    placementOverrides,
-    placementAliases,
-    tokenBaseY,
-    getGapY,
-    zoneTag,
-    yaw
-}: {
-    id: string
-    cfg: TokenModel
-    fromTile: number
-    toTile: number
-    slot: number
-    S: number
-    dir: PathDirection
-    rot: 0 | 90 | 180 | 270
-    placementOverrides?: PlacementOverrides
-    placementAliases?: Record<number, number>
-    tokenBaseY: number
-    getGapY: (nameKey: string | null) => number
-    zoneTag?: 'v' | 'j'
-    yaw: number
-}) {
-    const stateRef = useRef<{ stepIndex: number; start: number; fromPos: [number, number, number]; toPos: [number, number, number]; path: number[]; _renderPos?: [number, number, number] } | null>(null)
-    const [, tick] = useState(0)
+function AnimatedToken({ id, cfg, to, yaw }: { id: string; cfg: TokenModel; to: [number, number, number]; yaw: number }) {
+    const meshRef = useRef<{ pos: [number, number, number]; start: number; from: [number, number, number] } | null>(null)
+    const [, trigger] = useState(0) // used to force re-render when animation completes
 
-    const nameKey = useMemo(() => nameKeyFromUrl(cfg.url), [cfg.url])
-    const baseY = tokenBaseY + (cfg.y ?? 0) + (cfg.offsetY ?? 0) + getGapY(nameKey)
-
-    // build path of tiles from fromTile (exclusive) to toTile (inclusive) stepping forward
-    const buildPath = (from: number, to: number) => {
-        if (from === to) return []
-        const out: number[] = []
-        let cur = from
-        // step forward until reach to (mod 40)
-        for (let i = 0; i < 40; i++) {
-            cur = (cur + 1) % 40
-            out.push(cur)
-            if (cur === to) break
-        }
-        return out
+    // Initialize from stored value (persist across renders) or set immediately
+    if (!meshRef.current) {
+        meshRef.current = { pos: to, start: 0, from: to }
     }
 
-    // helper to compute world pos for a tile+slot
-    const posForTile = (tile: number): [number, number, number] => {
-        const sourceIndex = placementAliases?.[tile] ?? tile
-        const ov = placementOverrides?.[sourceIndex]?.[slot]
-        const zone = (sourceIndex === 10) ? zoneTag : undefined
-        const [px, pz] = (ov && sourceIndex !== 10) ? ov : positionFor(tile, slot, S, dir, rot, zone)
-        const py = baseY
-        return [px, py, pz]
-    }
-
-    // ensure stateRef initialized
-    if (!stateRef.current) {
-        const initial = posForTile(fromTile)
-        stateRef.current = { stepIndex: 0, start: 0, fromPos: initial, toPos: posForTile(toTile), path: buildPath(fromTile, toTile) }
-    }
-
-    // When fromTile/toTile change, rebuild the path and start animation from current pos
+    // When `to` changes, start an animation from previous pos -> to
     useEffect(() => {
-        const cur = stateRef.current!
-        const currentPos = cur.toPos || posForTile(fromTile)
-        const path = buildPath(fromTile, toTile)
-        // If no movement, snap to final
-        if (path.length === 0) {
-            cur.stepIndex = 0
-            cur.start = 0
-            cur.fromPos = posForTile(toTile)
-            cur.toPos = posForTile(toTile)
-            tick(s => s + 1)
-            return
-        }
-        cur.path = path
-        cur.stepIndex = 0
-        cur.start = performance.now()
-        cur.fromPos = currentPos
-        cur.toPos = posForTile(path[0])
-        tick(s => s + 1)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fromTile, toTile, slot, S, dir, rot, placementOverrides, placementAliases, tokenBaseY, cfg.url, zoneTag])
+        const now = performance.now()
+        const cur = meshRef.current!
+        // If identical, do nothing
+        if (cur.pos[0] === to[0] && cur.pos[1] === to[1] && cur.pos[2] === to[2]) return
+        cur.from = cur.pos.slice() as [number, number, number]
+        cur.start = now
+        // keep pos as current (will be updated in frame)
+    }, [to[0], to[1], to[2]])
 
     useFrame(() => {
-        const cur = stateRef.current!
+        const cur = meshRef.current!
         if (!cur) return
         const now = performance.now()
-        const duration = 340 // ms per hop
+        // If no active animation, ensure final position
+        const duration = 420 // ms
         const elapsed = Math.max(0, now - cur.start)
         const tRaw = Math.min(1, duration <= 0 ? 1 : elapsed / duration)
+        // ease-out cubic
         const t = 1 - Math.pow(1 - tRaw, 3)
-        const nx = cur.fromPos[0] + (cur.toPos[0] - cur.fromPos[0]) * t
-        const nz = cur.fromPos[2] + (cur.toPos[2] - cur.fromPos[2]) * t
-        const hopHeight = 0.22
-        const ny = cur.fromPos[1] + Math.sin(Math.PI * t) * hopHeight
-        // write a temporary pos so TokenMesh can render
-        cur._renderPos = [nx, ny, nz]
+        const nx = cur.from[0] + (to[0] - cur.from[0]) * t
+        const nz = cur.from[2] + (to[2] - cur.from[2]) * t
+        // vertical hop: sin(pi * t) curve scaled by hopHeight
+        const baseY = to[1]
+        const hopHeight = 0.22 // world units; small tasteful hop
+        const ny = baseY + Math.sin(Math.PI * t) * hopHeight
+        cur.pos = [nx, ny, nz]
+        // if animation finished, snap to exact target and trigger a rerender to clear any stale state
         if (tRaw >= 1) {
-            // advance to next step or finish
-            const nextIndex = cur.stepIndex + 1
-            if (nextIndex < (cur.path?.length || 0)) {
-                const nextTile = cur.path[nextIndex]
-                cur.stepIndex = nextIndex
-                cur.fromPos = posForTile(cur.path[nextIndex - 1])
-                cur.toPos = posForTile(nextTile)
-                cur.start = now
-            } else {
-                // finished full path
-                cur.fromPos = posForTile(cur.path[cur.path.length - 1])
-                cur.toPos = posForTile(cur.path[cur.path.length - 1])
-                cur._renderPos = cur.toPos
-                cur.start = 0
-            }
+            cur.pos = [to[0], to[1], to[2]]
+            // reset start so next effect can perform correctly
+            cur.start = 0
+            trigger(s => s + 1)
         }
     })
 
-    const cur = stateRef.current!
-    const renderPos: [number, number, number] = (cur && (cur as any)._renderPos) ? (cur as any)._renderPos : cur.toPos
-    return <TokenMesh cfg={cfg} position={renderPos} yaw={yaw} />
+    const curPos = meshRef.current!.pos
+    return <TokenMesh cfg={cfg} position={curPos} yaw={yaw} />
 }
+
+type RouteStep = { to: [number, number, number]; yaw: number }
+
+function RouteAnimatedToken({
+    id,
+    cfg,
+    route,
+    initialFrom,
+    initialYaw,
+    stepMs = 260,
+    hopHeight = 0.22,
+    onStart,
+    onDone,
+}: {
+    id: string
+    cfg: TokenModel
+    route: RouteStep[]
+    initialFrom: [number, number, number]
+    initialYaw: number
+    stepMs?: number
+    hopHeight?: number
+    onStart?: () => void
+    onDone?: () => void
+}) {
+    const posRef = useRef<[number, number, number] | null>(null)
+    const yawRef = useRef<number>(0)
+    const groupRef = useRef<THREE.Group>(null)
+    const routeStartedRef = useRef(false)
+    const animRef = useRef<{
+        active: boolean
+        from: [number, number, number]
+        to: [number, number, number]
+        yawFrom: number
+        yawTo: number
+        start: number
+        queue: RouteStep[]
+    } | null>(null)
+    const [, force] = useState(0)
+
+    if (posRef.current == null) {
+        posRef.current = initialFrom
+        yawRef.current = initialYaw
+    }
+
+    useEffect(() => {
+        const q = [...route]
+        if (!animRef.current) {
+            animRef.current = {
+                active: false,
+                from: posRef.current as [number, number, number],
+                to: posRef.current as [number, number, number],
+                yawFrom: yawRef.current,
+                yawTo: yawRef.current,
+                start: 0,
+                queue: q,
+            }
+        } else {
+            animRef.current.queue = q
+        }
+        // New incoming route -> clear the "started" flag so onStart can fire once for this route
+        routeStartedRef.current = false
+    }, [route])
+
+    useFrame(() => {
+        const st = animRef.current
+        if (!st) return
+
+        const same = (a: [number, number, number], b: [number, number, number]) =>
+            Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6 && Math.abs(a[2] - b[2]) < 1e-6
+
+        if (!st.active) {
+            // Start next meaningful step (skip no-ops)
+            while (st.queue.length && same(posRef.current!, st.queue[0]!.to)) st.queue.shift()
+            if (st.queue.length) {
+                const next = st.queue.shift()!
+                st.from = posRef.current as [number, number, number]
+                st.to = next.to
+                st.yawFrom = yawRef.current
+                // Face toward the movement vector (from -> to) so token looks in travel direction
+                // Use atan2(dx, dz) so angle is computed relative to scene Z axis as used elsewhere
+                st.yawTo = Math.atan2(st.to[0] - st.from[0], st.to[2] - st.from[2])
+                st.start = performance.now()
+                st.active = true
+                // Call onStart only once per route (not every hop)
+                if (!routeStartedRef.current) {
+                    routeStartedRef.current = true
+                    onStart?.()
+                }
+            } else {
+                return
+            }
+        }
+
+        const now = performance.now()
+        const tRaw = Math.min(1, (now - st.start) / stepMs)
+        const t = 1 - Math.pow(1 - tRaw, 3)
+
+        const nx = st.from[0] + (st.to[0] - st.from[0]) * t
+        const nz = st.from[2] + (st.to[2] - st.from[2]) * t
+
+        const baseY = st.to[1]
+        const distXZ = Math.hypot(st.to[0] - st.from[0], st.to[2] - st.from[2])
+        const hop = distXZ < 1e-5 ? 0 : hopHeight // 👈 no vertical bounce if not moving
+        const ny = baseY + Math.sin(Math.PI * t) * hop
+
+        const wrap = (a: number) => (a + Math.PI * 3) % (Math.PI * 2) - Math.PI
+        const dy = wrap(st.yawTo - st.yawFrom)
+        const yaw = wrap(st.yawFrom + dy * t)
+
+        // Mutate wrapper group transform each frame so inner mesh stays at origin
+        posRef.current = [nx, ny, nz]
+        yawRef.current = yaw
+        if (groupRef.current) {
+            groupRef.current.position.set(nx, ny, nz)
+            groupRef.current.rotation.y = yaw
+        }
+
+        if (tRaw >= 1) {
+            posRef.current = st.to
+            yawRef.current = st.yawTo
+            if (groupRef.current) {
+                groupRef.current.position.set(st.to[0], st.to[1], st.to[2])
+                groupRef.current.rotation.y = st.yawTo
+            }
+            st.active = false
+            if (!st.queue.length) {
+                // Route complete (no more queued steps)
+                routeStartedRef.current = false
+                onDone?.()
+            }
+            // else: more steps remain; next frame will start the next one
+        }
+    })
+
+    // Render a stable wrapper group we mutate per-frame. Keep inner mesh at origin.
+    return (
+        <group ref={groupRef}>
+            <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} />
+        </group>
+    )
+}
+
+// Route debugger: small visual markers for start and each step
+function RouteDebugger({
+    id,
+    start,
+    steps,
+}: {
+    id: string
+    start: [number, number, number]
+    steps: { to: [number, number, number]; yaw: number }[]
+}) {
+    const small = 0.035
+    return (
+        <group name={`RouteDebugger-${id}`}>
+            {/* start marker */}
+            <mesh position={start}>
+                <sphereGeometry args={[small, 10, 10]} />
+                <meshBasicMaterial color="#3b82f6" />
+            </mesh>
+
+            {/* per-step markers */}
+            {steps.map((s, i) => (
+                <group key={`${id}-step-${i}`} position={s.to}>
+                    <mesh>
+                        <sphereGeometry args={[small, 10, 10]} />
+                        <meshBasicMaterial color={i === steps.length - 1 ? '#22c55e' : '#ef4444'} />
+                    </mesh>
+                    <Html center distanceFactor={14}>
+                        <div style={{ color: '#fff', fontSize: 10, background: 'rgba(0,0,0,.55)', padding: '1px 4px', borderRadius: 4 }}>
+                            {i + 1}
+                        </div>
+                    </Html>
+                </group>
+            ))}
+        </group>
+    )
+}
+
 
 // Removed AnimatedToken (old movement); tokens update via state changes only
 
@@ -539,6 +644,26 @@ function displayTileNumber(ti: number): number {
     const n = (((ti - 11) % 40) + 40) % 40 // wrap to 0..39
     return n + 1 // to 1..40
 }
+
+function indicesBetween(prev: number, curr: number, dir: PathDirection): number[] {
+    if (prev === curr) return []
+    const step = dir === 'clockwise' ? 1 : -1
+    const out: number[] = []
+    let i = prev
+    do {
+        i = (i + step + 40) % 40
+        out.push(i)
+    } while (i !== curr)
+    return out
+}
+
+function shortestDir(prev: number, curr: number, tieHint: PathDirection = 'clockwise'): PathDirection {
+    const fwd = (curr - prev + 40) % 40
+    const back = (prev - curr + 40) % 40
+    if (fwd === back) return tieHint // exact opposite (20↔0): break tie with your hint
+    return fwd < back ? 'clockwise' : 'counterclockwise'
+}
+
 
 function HoverPulse({ x, z, y, sx, sz, trigger }: { x: number; z: number; y: number; sx: number; sz: number; trigger?: any }) {
     const meshRef = useRef<THREE.Mesh>(null)
@@ -1146,6 +1271,9 @@ function Board3D({
     placementAliases = {},
     tokenGapsY,
     children,
+    onTokenRouteStart,
+    onTokenRouteComplete,
+    routeCompleteDelayMs = 1000,
 }: Props) {
     // Ensure dev runtime API exists
     useEffect(() => { ensureDevFlagsAPI(); ensureDevZonesAPI() }, [])
@@ -1192,6 +1320,28 @@ function Board3D({
 
     // WebGL renderer ref for dynamic pixel ratio tweaks during interaction
     const glRef = useRef<THREE.WebGLRenderer | null>(null)
+
+    const prevTileRef = useRef<Record<string, number>>({})
+    // Route state (stable across renders)
+    const movingRef = useRef<Set<string>>(new Set())
+    const routeCacheRef = useRef<Record<string, RouteStep[]>>({})
+    const fromCacheRef = useRef<Record<string, [number, number, number]>>({})
+    const yawFromCacheRef = useRef<Record<string, number>>({})
+    // Guarded route logger to avoid spamming the console every frame
+    const lastLogRef = useRef<string>('')
+    function logRoute(playerId: string, prev: number, curr: number, hops: number) {
+        const line = `[route ${playerId}] prev=${prev} curr=${curr} hops=${hops} |`
+        if (lastLogRef.current !== line) {
+            lastLogRef.current = line
+            // Optional: gate behind a flag if needed
+            // if (getDevFlag('logRoutes')) console.log(line)
+            console.log(line)
+        }
+    }
+    // Track the last observed tile per player to compute hops reliably
+    const lastTileRef = useRef<Record<string, number>>({})
+    // Prevent starting the same target move more than once per-player
+    const lastProcessedTargetRef = useRef<Record<string, number>>({})
 
     // Free-roam camera via OrbitControls; suspend rig while interacting
     const [orbiting, setOrbiting] = useState(false)
@@ -1380,6 +1530,31 @@ function Board3D({
         try { localStorage.setItem(TILE_ZONES_LS, JSON.stringify(m)) } catch { }
     }
     const twoZoneTiles = useMemo(() => new Set<number>([0, 1, 3, 6, 8, 9, 11, 13, 14, 16, 18, 19, 21, 23, 24, 26, 27, 29, 31, 32, 34, 37, 39]), [])
+    const lastSeenTileRef = useRef<Record<string, number>>({});
+    useEffect(() => {
+        for (const p of plist) {
+            const tileNow = ((p.position + (displayOffset % 40) + 40) % 40);
+
+            const lastSeen = lastSeenTileRef.current[p.id];
+            if (lastSeen == null) {
+                // First time we see this player: remember where they are.
+                lastSeenTileRef.current[p.id] = tileNow;
+                continue;
+            }
+
+            if (lastSeen !== tileNow && !movingRef.current.has(p.id)) {
+                // Seed "previous" so the first movement actually animates.
+                prevTileRef.current[p.id] = lastSeen;
+                lastTileRef.current[p.id] = lastSeen;
+                delete lastProcessedTargetRef.current[p.id]; // allow building a fresh route
+                lastSeenTileRef.current[p.id] = tileNow;
+            } else {
+                // Keep last-seen up to date when idle.
+                lastSeenTileRef.current[p.id] = tileNow;
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [plist, displayOffset, pathDirection, indexRotation]);
     const FORCE_NON_PROP = useMemo(() => new Set<number>([5, 15, 25, 35, 12, 28, 2, 7, 17, 22, 33, 36, 4, 38]), [])
     const HIGHLIGHT_EXCLUDED = useMemo(() => new Set<number>([0, 10, 20, 30, 2, 4, 7, 17, 22, 33, 36, 38]), [])
     const [tzMap, setTzMap] = useState<TileZones>(() => readTileZones())
@@ -1835,74 +2010,164 @@ function Board3D({
                     const tileIndex = (p.position + (displayOffset % 40) + 40) % 40
                     const orderIdx = order ? order.indexOf(p.id) : -1
                     const slot = Math.max(0, Math.min(7, orderIdx >= 0 ? orderIdx : 0))
-                    const sourceIndex = placementAliases?.[tileIndex] ?? tileIndex
-                    const ov = placementOverrides?.[sourceIndex]?.[slot]
                     const cfg = models[p.id]
-                    if (cfg?.url) {
+                    if (!cfg?.url) return <group key={p.id} /> // no model
+
+                    // Use the most recently observed tile (from lastTileRef) if available.
+                    // Fallback to prevTileRef (committed previous tile) or the current tileIndex.
+                    const prev =
+                        prevTileRef.current[p.id] ??
+                        lastSeenTileRef.current[p.id] ??
+                        tileIndex;
+                    const debugOn = getDevFlag('debugRoutes' as any)
+                    const routeDir = shortestDir(prev, tileIndex, pathDirection)
+
+
+                    // Build a step at any tile index (final step may apply overrides/aliases)
+                    const makeStep = (ti: number, isFinal: boolean): RouteStep => {
+                        const sourceIndex = isFinal ? (placementAliases?.[ti] ?? ti) : ti
+                        const ov = isFinal ? placementOverrides?.[sourceIndex]?.[slot] : undefined
                         const nameKey = nameKeyFromUrl(cfg.url)
-                        const pre = tokenPositions[p.id]
-                        const [x, y, z] = pre ? pre : (() => {
-                            const [px, pz] = (ov && sourceIndex !== 10) ? ov : positionFor(tileIndex, slot, topSize, pathDirection, indexRotation)
-                            const py = tokenBaseY + (cfg.y ?? 0) + (cfg.offsetY ?? 0) + getGapY(nameKey)
-                            return [px, py, pz] as [number, number, number]
-                        })()
-                        const yawOffset = 0
-                        const zoneTag: 'v' | 'j' | undefined = (tileIndex === 10) ? (p.inJail ? 'j' : 'v') : undefined
+                        const zoneTag: 'v' | 'j' | undefined = (ti === 10) ? (p.inJail ? 'j' : 'v') : undefined
+                        const [px, pz] = (ov && sourceIndex !== 10)
+                            ? ov
+                            : positionFor(ti, slot, topSize, pathDirection, indexRotation, zoneTag)
+                        const py = tokenBaseY + (cfg.y ?? 0) + (cfg.offsetY ?? 0) + getGapY(nameKey)
                         const txFor = getTxForTile(sourceIndex, zoneTag)
-                        const __slotRot = (txFor?.slots?.[String(slot)] && (txFor.slots![String(slot)][2] || 0)) || 0
-                        const yaw = yawToward(tileIndex, worldSize, pathDirection, indexRotation) + (txFor?.yaw || 0) + __slotRot + yawOffset
-                        return (
-                            <Suspense
-                                key={p.id}
-                                fallback={showFallbackSpheres ? (
-                                    <group position={[x, y, z]}>
-                                        <mesh castShadow>
-                                            <sphereGeometry args={[0.18, 24, 24]} />
-                                            <meshStandardMaterial color={TOKEN_COLORS[idx % TOKEN_COLORS.length]} metalness={0.05} roughness={0.6} />
-                                        </mesh>
-                                        {showLabels && (
-                                            <Html center distanceFactor={12}>
-                                                <div style={{ background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }}>{p.name}</div>
-                                            </Html>
-                                        )}
-                                    </group>
-                                ) : null}
-                            >
-                                {/* Use AnimatedToken so the token hops when moving between tiles */}
-                                <AnimatedToken
-                                    id={p.id}
-                                    cfg={cfg}
-                                    fromTile={p.position}
-                                    toTile={tileIndex}
-                                    slot={slot}
-                                    S={topSize}
-                                    dir={pathDirection}
-                                    rot={indexRotation}
-                                    placementOverrides={placementOverrides}
-                                    placementAliases={placementAliases}
-                                    tokenBaseY={tokenBaseY}
-                                    getGapY={getGapY}
-                                    zoneTag={zoneTag}
-                                    yaw={yaw}
-                                />
-                            </Suspense>
-                        )
+                        const slotRot = (txFor?.slots?.[String(slot)] && (txFor.slots![String(slot)][2] || 0)) || 0
+                        const yaw = yawToward(ti, worldSize, routeDir, indexRotation) + (txFor?.yaw || 0) + slotRot
+                        return { to: [px, py, pz] as [number, number, number], yaw }
                     }
-                    return showFallbackSpheres
-                        ? (
-                            <group key={p.id} position={(() => { const zoneTag: 'v' | 'j' | undefined = (tileIndex === 10) ? (p.inJail ? 'j' : 'v') : undefined; const [x, z] = (ov && sourceIndex !== 10) ? ov : positionFor(tileIndex, slot, topSize, pathDirection, indexRotation, zoneTag); return [x, tokenBaseY, z] })()}>
-                                <mesh castShadow>
-                                    <sphereGeometry args={[0.18, 24, 24]} />
-                                    <meshStandardMaterial color={TOKEN_COLORS[idx % TOKEN_COLORS.length]} metalness={0.05} roughness={0.6} />
-                                </mesh>
-                                {showLabels && (
-                                    <Html center distanceFactor={12}>
-                                        <div style={{ background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }}>{p.name}</div>
-                                    </Html>
-                                )}
-                            </group>
-                        ) : <group key={p.id} />
+
+                    // If not already moving, (re)compute a route from prev -> tileIndex
+                    if (!movingRef.current.has(p.id)) {
+                        // Skip zero-hop moves entirely
+                        if (prev === tileIndex) {
+                            // small dev log when debugRoutes enabled (guarded)
+                            if (debugOn) logRoute(p.id, prev, tileIndex, 0)
+                        } else {
+                            // Avoid re-processing the same target twice
+                            const lastProcessed = lastProcessedTargetRef.current[p.id]
+                            if (lastProcessed === tileIndex) {
+                                // already queued/processed this target; skip
+                            } else {
+                                const seq = indicesBetween(prev, tileIndex, routeDir)
+                                const startStep = makeStep(prev, false)
+                                const finalStep = makeStep(tileIndex, true)
+                                // Build intermediate route steps (use movement heading for intermediate steps)
+                                const route: RouteStep[] = seq.map((ti) => makeStep(ti, false))
+                                if (route.length) route[route.length - 1] = finalStep
+
+                                // Compute per-step heading (from previous step -> this step) for intermediate steps
+                                // so debug markers and queued yaw values represent travel direction.
+                                try {
+                                    let prevPos = startStep.to
+                                    for (let i = 0; i < route.length; i++) {
+                                        if (i < route.length - 1) {
+                                            const to = route[i].to
+                                            // yaw = atan2(dx, dz) (consistent with movement math in animator)
+                                            route[i].yaw = Math.atan2(to[0] - prevPos[0], to[2] - prevPos[2])
+                                            prevPos = to
+                                        } else {
+                                            // keep final step's curated tile yaw (finalStep.yaw)
+                                        }
+                                    }
+                                } catch { }
+
+                                // Seed caches so re-renders don't rewrite the queue mid-flight
+                                routeCacheRef.current[p.id] = route
+                                fromCacheRef.current[p.id] = startStep.to
+                                yawFromCacheRef.current[p.id] = startStep.yaw
+
+                                // Mark processed target so we don't enqueue it again
+                                lastProcessedTargetRef.current[p.id] = tileIndex
+
+                                if (debugOn) {
+                                    const seqLog = seq.join(' -> ')
+                                    logRoute(p.id, prev, tileIndex, seq.length)
+                                    // additional verbose trace once per change
+                                    console.log(`[route ${p.name}] ${seqLog}`)
+                                }
+                            }
+                        }
+                    }
+
+                    const route = routeCacheRef.current[p.id] || []
+                    const startFrom = fromCacheRef.current[p.id] || makeStep(tileIndex, true).to
+                    const startYaw = yawFromCacheRef.current[p.id] ?? makeStep(tileIndex, true).yaw
+                    const idle = makeStep(tileIndex, true)
+
+                    const fallback = showFallbackSpheres ? (
+                        <group position={idle.to}>
+                            <mesh castShadow>
+                                <sphereGeometry args={[0.18, 24, 24]} />
+                                <meshStandardMaterial color={TOKEN_COLORS[idx % TOKEN_COLORS.length]} metalness={0.05} roughness={0.6} />
+                            </mesh>
+                            {showLabels && (
+                                <Html center distanceFactor={12}>
+                                    <div style={{ background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', fontSize: 12, borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                        {p.name}
+                                    </div>
+                                </Html>
+                            )}
+                        </group>
+                    ) : null
+
+                    return (
+                        <Suspense key={p.id} fallback={fallback}>
+                            {/* idle OR animated */}
+                            {route.length === 0 ? (
+                                <group position={idle.to} rotation={[0, idle.yaw, 0]}>
+                                    <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} />
+                                </group>
+                            ) : (
+                                <>
+                                    <RouteAnimatedToken
+                                        id={p.id}
+                                        cfg={cfg}
+                                        route={route}
+                                        initialFrom={startFrom}
+                                        initialYaw={startYaw}
+                                        stepMs={260}
+                                        hopHeight={0.20}
+                                        onStart={() => {
+                                            movingRef.current.add(p.id)
+                                            onTokenRouteStart?.(p.id)
+                                        }}
+                                        onDone={() => {
+                                            const finish = () => {
+                                                // commit the new tile only when finished
+                                                prevTileRef.current[p.id] = tileIndex
+                                                lastTileRef.current[p.id] = tileIndex
+                                                delete lastProcessedTargetRef.current[p.id]
+
+                                                // 🔁 release the moving lock *after* the delay
+                                                movingRef.current.delete(p.id)
+
+                                                // clear caches for next move
+                                                delete routeCacheRef.current[p.id]
+                                                delete fromCacheRef.current[p.id]
+                                                delete yawFromCacheRef.current[p.id]
+
+                                                onTokenRouteComplete?.(p.id)
+                                            }
+
+                                            if (routeCompleteDelayMs > 0) {
+                                                setTimeout(finish, routeCompleteDelayMs)
+                                            } else {
+                                                finish()
+                                            }
+                                        }}
+
+                                    />
+                                    {debugOn && <RouteDebugger id={p.id} start={startFrom} steps={route} />}
+                                </>
+                            )}
+                        </Suspense>
+                    )
                 })}
+
+
 
                 {/* If tokens are disabled via dev flag, still show fallback spheres when requested */}
                 {getDevFlag('disableTokens') && showFallbackSpheres && plist.map((p, idx) => {

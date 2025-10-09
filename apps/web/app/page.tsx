@@ -939,6 +939,12 @@ export default function Home() {
   const buyModalSeenKey = useRef<string | null>(null)
   const FADE_MS = 220
   const [buyVisible, setBuyVisible] = useState(false)
+  const [animatingMyMove, setAnimatingMyMove] = useState(false)
+  const pendingBuyTileRef = useRef<number | null>(null)
+  const pendingBuyTimerRef = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
+  }, [])
 
   // When a buy modal mounts, flip visible on next frame so CSS transitions run
   useEffect(() => {
@@ -949,8 +955,8 @@ export default function Home() {
     setBuyVisible(false)
     stopBuyTimer()
     window.setTimeout(() => {
-      setBuyModal(null)   // ← unmount after fade
-      after?.()           // ← caller decides what to send
+      setBuyModal(null)
+      after?.()
     }, FADE_MS)
   }
 
@@ -984,20 +990,35 @@ export default function Home() {
       if (!isMyTurn) return
       const d = state?.lastDice
       if (!d) return
+
       const key = `${d.d1}-${d.d2}-${d.isDouble}`
       const tile = me?.position
-      if (key && tile != null && buyModalSeenKey.current !== key) {
-        const sp: any = (board as any).spaces?.[tile]
-        const t = sp?.type
-        const isBuyable = t === 'PROPERTY' || t === 'STATION' || t === 'UTILITY'
-        const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
-        if (isBuyable && !hasOwner) {
-          buyModalSeenKey.current = key
-          setBuyModal({ tile, progress: 0 })
-        }
+      if (!key || tile == null) return
+      if (buyModalSeenKey.current === key) return
+
+      const sp: any = (board as any).spaces?.[tile]
+      const t = sp?.type
+      const isBuyable = t === 'PROPERTY' || t === 'STATION' || t === 'UTILITY'
+      const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
+      if (!isBuyable || hasOwner) return
+
+      // mark this dice result as handled
+      buyModalSeenKey.current = key
+
+      // delay UI if token still animating — remember the tile
+      if (animatingMyMove) {
+        pendingBuyTileRef.current = tile
+        return
       }
+
+      // no animation — open now but add +100ms
+      if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
+      pendingBuyTimerRef.current = window.setTimeout(() => {
+        setBuyModal({ tile, progress: 0 })
+      }, 100)
     } catch { }
-  }, [state?.lastDice, isMyTurn, me?.position, state?.players])
+  }, [state?.lastDice, isMyTurn, me?.position, state?.players, animatingMyMove])
+
 
   // timer effect for modal (30s) — use tile as the stable dependency
   useEffect(() => {
@@ -1132,6 +1153,21 @@ export default function Home() {
               indexRotation={270}
               pathDirection="counterclockwise"
               displayOffset={0}
+
+              onTokenRouteStart={(pid) => { if (pid === socket.id) setAnimatingMyMove(true) }}
+              onTokenRouteComplete={(pid) => {
+                if (pid === socket.id) {
+                  setAnimatingMyMove(false)
+                  if (pendingBuyTileRef.current != null) {
+                    if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
+                    pendingBuyTimerRef.current = window.setTimeout(() => {
+                      const t = pendingBuyTileRef.current
+                      pendingBuyTileRef.current = null
+                      if (t != null) setBuyModal({ tile: t, progress: 0 })
+                    }, 100) // +100ms after animation
+                  }
+                }
+              }}
 
               showLabels={false}
               showFallbackSpheres={true}
