@@ -451,6 +451,10 @@ function RouteAnimatedToken({
     hopHeight = 0.22,
     onStart,
     onDone,
+    onStepStart,
+    onStepEnd,
+    onProgress,
+    startAt,
 }: {
     id: string
     cfg: TokenModel
@@ -461,6 +465,10 @@ function RouteAnimatedToken({
     hopHeight?: number
     onStart?: () => void
     onDone?: () => void
+    onStepStart?: (index: number) => void
+    onStepEnd?: (index: number) => void
+    onProgress?: (phase: number, index: number) => void
+    startAt: number
 }) {
     const posRef = useRef<[number, number, number] | null>(null)
     const yawRef = useRef<number>(0)
@@ -474,9 +482,13 @@ function RouteAnimatedToken({
         yawTo: number
         start: number
         queue: RouteStep[]
+        full: RouteStep[]
         style: 'hop' | 'linear'
+        startAt: number
+        idx: number
     } | null>(null)
     const [, force] = useState(0)
+    const totalRef = useRef(0)
 
     if (posRef.current == null) {
         posRef.current = initialFrom
@@ -485,6 +497,7 @@ function RouteAnimatedToken({
 
     useEffect(() => {
         const q = [...route]
+        totalRef.current = q.length
         if (!animRef.current) {
             animRef.current = {
                 active: false,
@@ -493,15 +506,22 @@ function RouteAnimatedToken({
                 yawFrom: yawRef.current,
                 yawTo: yawRef.current,
                 start: 0,
-                queue: q,
+                queue: [...q],
+                full: [...q],
                 style: 'hop',
+                startAt: startAt,
+                idx: -1,
             }
         } else {
-            animRef.current.queue = q
+            animRef.current.queue = [...q]
+            animRef.current.full = [...q]
+            animRef.current.startAt = startAt
+            animRef.current.idx = -1
+            animRef.current.active = false
         }
         // New incoming route -> clear the "started" flag so onStart can fire once for this route
         routeStartedRef.current = false
-    }, [route])
+    }, [route, startAt])
 
     useFrame(() => {
         const st = animRef.current
@@ -511,24 +531,57 @@ function RouteAnimatedToken({
             Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6 && Math.abs(a[2] - b[2]) < 1e-6
 
         if (!st.active) {
-            // Start next meaningful step (skip no-ops)
-            while (st.queue.length && same(posRef.current!, st.queue[0]!.to)) st.queue.shift()
+            const now = performance.now()
+            const total = st.full.length
+            if (!total) return
+            // If route already fully elapsed, finish immediately
+            if (now - st.startAt >= total * stepMs) {
+                const last = st.full[total - 1]
+                posRef.current = last.to
+                yawRef.current = last.yaw
+                if (groupRef.current) {
+                    groupRef.current.position.set(last.to[0], last.to[1], last.to[2])
+                    groupRef.current.rotation.y = last.yaw
+                }
+                routeStartedRef.current = false
+                onDone?.()
+                return
+            }
+            // Determine current step index based on timeline
+            let idx = Math.floor((now - st.startAt) / stepMs)
+            if (idx < 0) idx = 0
+            if (idx >= total) idx = total - 1
+            // Trim queue to current step
+            const completed = total - st.queue.length
+            const needToDrop = idx - completed
+            if (needToDrop > 0) {
+                for (let k = 0; k < needToDrop; k++) {
+                    const dropped = st.queue.shift()
+                    if (!dropped) break
+                    // Jump position to dropped step end so visual catches up without replay
+                    posRef.current = dropped.to
+                    yawRef.current = dropped.yaw
+                    if (groupRef.current) {
+                        groupRef.current.position.set(dropped.to[0], dropped.to[1], dropped.to[2])
+                        groupRef.current.rotation.y = dropped.yaw
+                    }
+                }
+            }
+            // Start current step
             if (st.queue.length) {
                 const next = st.queue.shift()!
-                st.from = posRef.current as [number, number, number]
+                const from = posRef.current as [number, number, number]
+                st.from = from
                 st.to = next.to
                 st.yawFrom = yawRef.current
-                // Face toward the movement vector (from -> to) so token looks in travel direction
-                // Use atan2(dx, dz) so angle is computed relative to scene Z axis as used elsewhere
                 st.yawTo = Math.atan2(st.to[0] - st.from[0], st.to[2] - st.from[2])
-                st.start = performance.now()
+                // Align start with timeline (so t reflects elapsed-in-step)
+                st.start = st.startAt + idx * stepMs
                 st.active = true
                 st.style = next.style || 'hop'
-                // Call onStart only once per route (not every hop)
-                if (!routeStartedRef.current) {
-                    routeStartedRef.current = true
-                    onStart?.()
-                }
+                st.idx = idx
+                if (!routeStartedRef.current) { routeStartedRef.current = true; onStart?.() }
+                try { onStepStart?.(idx) } catch { }
             } else {
                 return
             }
@@ -561,7 +614,14 @@ function RouteAnimatedToken({
             groupRef.current.rotation.y = yaw
         }
 
+        // Report per-hop progress (phase = t) to parent for synchronized visuals
+        try {
+            const idx = Math.max(0, totalRef.current - st.queue.length - 1)
+            onProgress?.(t, idx)
+        } catch { }
+
         if (tRaw >= 1) {
+            try { onStepEnd?.(st.idx) } catch { }
             posRef.current = st.to
             yawRef.current = st.yawTo
             if (groupRef.current) {
@@ -569,12 +629,11 @@ function RouteAnimatedToken({
                 groupRef.current.rotation.y = st.yawTo
             }
             st.active = false
+            // If timeline has more steps elapsed already, the next frame will start the right one immediately
             if (!st.queue.length) {
-                // Route complete (no more queued steps)
                 routeStartedRef.current = false
                 onDone?.()
             }
-            // else: more steps remain; next frame will start the next one
         }
     })
 
@@ -671,18 +730,27 @@ function shortestDir(prev: number, curr: number, tieHint: PathDirection = 'clock
 }
 
 
-function HoverPulse({ x, z, y, sx, sz, trigger }: { x: number; z: number; y: number; sx: number; sz: number; trigger?: any }) {
+function HoverPulse({ x, z, y, sx, sz, trigger, color = '#ffd54f', opacity = 0.25, pulse = true }: {
+    x: number; z: number; y: number; sx: number; sz: number; trigger?: any; color?: string; opacity?: number; pulse?: boolean
+}) {
     const meshRef = useRef<THREE.Mesh>(null)
     const matRef = useRef<THREE.MeshBasicMaterial>(null)
     useEffect(() => {
         const m = meshRef.current as any
         if (m) m.raycast = () => null
     }, [])
-    // Continuous color/opacity pulse only — keep width/length fixed
+    useEffect(() => {
+        if (matRef.current) {
+            try { matRef.current.color.set(color) } catch { }
+            matRef.current.opacity = (typeof opacity === 'number' ? opacity : 0.25)
+        }
+    }, [color, opacity, trigger])
+    // Continuous color/opacity pulse only - keep width/length fixed
     useFrame(({ clock }) => {
+        if (!pulse) return
         const t = clock.getElapsedTime()
-        const base = 0.15
-        const amp = 0.15
+        const base = (typeof opacity === 'number' ? opacity : 0.25) * 0.6
+        const amp = (typeof opacity === 'number' ? opacity : 0.25) * 0.8
         const speed = 5.0
         const a = base + amp * (0.5 + 0.5 * Math.sin(t * speed))
         if (matRef.current) matRef.current.opacity = a
@@ -690,7 +758,69 @@ function HoverPulse({ x, z, y, sx, sz, trigger }: { x: number; z: number; y: num
     return (
         <mesh ref={meshRef} position={[x, y, z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
             <planeGeometry args={[sx, sz]} />
-            <meshBasicMaterial ref={matRef} color="#ffd54f" transparent opacity={0.25} depthWrite={false} />
+            <meshBasicMaterial ref={matRef} color={color} transparent opacity={opacity} depthWrite={false} />
+        </mesh>
+    )
+}
+
+function PhasePulse({ x, z, y, sx, sz, getPhase, color = '#60a5fa', baseOpacity = 0.14, ampOpacity = 0.28 }: {
+    x: number; z: number; y: number; sx: number; sz: number;
+    getPhase: () => number | undefined;
+    color?: string; baseOpacity?: number; ampOpacity?: number
+}) {
+    const meshRef = useRef<THREE.Mesh>(null)
+    const matRef = useRef<THREE.MeshBasicMaterial>(null)
+    useEffect(() => {
+        const m = meshRef.current as any
+        if (m) m.raycast = () => null
+    }, [])
+    useEffect(() => {
+        if (matRef.current) {
+            try { matRef.current.color.set(color) } catch { }
+            matRef.current.opacity = baseOpacity
+        }
+    }, [color, baseOpacity])
+    useFrame(() => {
+        const phase = getPhase() ?? 0
+        const amp = Math.max(0, Math.sin(Math.PI * phase))
+        const next = baseOpacity + ampOpacity * amp
+        if (matRef.current) matRef.current.opacity = Math.min(1, Math.max(0, next))
+    })
+    return (
+        <mesh ref={meshRef} position={[x, y, z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+            <planeGeometry args={[sx, sz]} />
+            <meshBasicMaterial ref={matRef} color={color} transparent opacity={baseOpacity} depthWrite={false} />
+        </mesh>
+    )
+}
+
+function FlashFade({ x, z, y, sx, sz, getRemaining, color = '#ffffff', maxOpacity = 0.45 }: {
+    x: number; z: number; y: number; sx: number; sz: number;
+    getRemaining: () => number | undefined;
+    color?: string; maxOpacity?: number
+}) {
+    const meshRef = useRef<THREE.Mesh>(null)
+    const matRef = useRef<THREE.MeshBasicMaterial>(null)
+    useEffect(() => {
+        const m = meshRef.current as any
+        if (m) m.raycast = () => null
+    }, [])
+    useEffect(() => {
+        if (matRef.current) {
+            try { matRef.current.color.set(color) } catch { }
+            matRef.current.opacity = 0
+        }
+    }, [color])
+    useFrame(() => {
+        const rem = Math.max(0, Math.min(1, getRemaining() ?? 0))
+        // quick ease-out flash
+        const eased = rem * rem
+        if (matRef.current) matRef.current.opacity = maxOpacity * eased
+    })
+    return (
+        <mesh ref={meshRef} position={[x, y, z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={3}>
+            <planeGeometry args={[sx, sz]} />
+            <meshBasicMaterial ref={matRef} color={color} transparent opacity={0} depthWrite={false} />
         </mesh>
     )
 }
@@ -1297,7 +1427,7 @@ function Board3D({
     children,
     onTokenRouteStart,
     onTokenRouteComplete,
-    routeCompleteDelayMs = 1000,
+    routeCompleteDelayMs = 0,
 }: Props) {
     // Ensure dev runtime API exists
     useEffect(() => { ensureDevFlagsAPI(); ensureDevZonesAPI() }, [])
@@ -1355,6 +1485,13 @@ function Board3D({
     const routeCacheRef = useRef<Record<string, RouteStep[]>>({})
     const fromCacheRef = useRef<Record<string, [number, number, number]>>({})
     const yawFromCacheRef = useRef<Record<string, number>>({})
+    const routeStartAtRef = useRef<Record<string, number>>({})
+    // Track current hop tile + phase per player for highlights
+    const currentHopTileRef = useRef<Record<string, number>>({})
+    const routePhaseRef = useRef<Record<string, number>>({})
+    const routeFlashRef = useRef<Record<string, { tile: number; until: number; duration: number }>>({})
+    // Force a React re-render when highlight attachments change (step start/end, route done)
+    const [, forceScene] = useState(0)
     // Guarded route logger to avoid spamming the console every frame
     const lastLogRef = useRef<string>('')
     function logRoute(playerId: string, prev: number, curr: number, hops: number) {
@@ -2033,6 +2170,89 @@ function Board3D({
                     )
                 })()}
 
+                {/* Current hop highlight (white, bounce-synced) and drop flash */}
+                {(() => {
+                    const entries = Object.entries(currentHopTileRef.current)
+                    if (!entries.length) return null
+                    const groups: ReactNode[] = []
+                    for (const [pid, ti] of entries) {
+                        if (typeof ti === 'number') {
+                            const base = tileRectFor(ti, topSize, pathDirection, indexRotation)
+                            const tileKind = base.edge === 'corner' ? 0 : (FORCE_NON_PROP.has(ti) ? 2 : (isBuyableTile(ti) ? 1 : 2))
+                            const defHZ: ZoneTx = (tileKind === 0) ? { wScale: 1.56, dScale: 1.56 }
+                                : (tileKind === 1) ? { wScale: 1.03, dScale: 1.76 }
+                                    : { wScale: 1.02, dScale: 2.30 }
+                            const savedHZ = (tzMap[String(ti)]?.hz || {}) as ZoneTx
+                            const tx = { ...defHZ, ...savedHZ } as ZoneTx
+                            const baseW = base.w, baseD = base.d
+                            const wScale = (tx.wScale || 1)
+                            const dScale = (tx.dScale || 1)
+                            const sx = baseW * wScale
+                            const sz = baseD * dScale
+                            let cx = base.cx + (tx.dx || 0)
+                            let cz = base.cz + (tx.dz || 0)
+                            const dw = (sx - baseW) / 2
+                            const dd = (sz - baseD) / 2
+                            switch (base.edge) {
+                                case 'bottom': { cx += dw; cz += dd; break }
+                                case 'top': { cx += dw; cz -= dd; break }
+                                case 'left': { cz += dw; cx += dd; break }
+                                case 'right': { cz += dw; cx -= dd; break }
+                                default: break
+                            }
+                            const y = 0.004
+                            const rotY = tx.rot || 0
+                            const getPhase = () => routePhaseRef.current[pid]
+                            groups.push(
+                                <group key={`hop-${pid}-${ti}`} position={[cx, y, cz]} rotation={[0, rotY, 0]}>
+                                    <PhasePulse x={0} z={0} y={0} sx={sx} sz={sz} getPhase={getPhase} color="#ffffff" baseOpacity={0.10} ampOpacity={0.40} />
+                                </group>
+                            )
+                        }
+                        // drop flash (short fade after landing)
+                        const flash = routeFlashRef.current[pid]
+                        if (flash && (typeof performance !== 'undefined' ? performance.now() : Date.now()) < flash.until) {
+                            const ti = flash.tile
+                            const base = tileRectFor(ti, topSize, pathDirection, indexRotation)
+                            const tileKind = base.edge === 'corner' ? 0 : (FORCE_NON_PROP.has(ti) ? 2 : (isBuyableTile(ti) ? 1 : 2))
+                            const defHZ: ZoneTx = (tileKind === 0) ? { wScale: 1.56, dScale: 1.56 }
+                                : (tileKind === 1) ? { wScale: 1.03, dScale: 1.76 }
+                                    : { wScale: 1.02, dScale: 2.30 }
+                            const savedHZ = (tzMap[String(ti)]?.hz || {}) as ZoneTx
+                            const tx = { ...defHZ, ...savedHZ } as ZoneTx
+                            const baseW = base.w, baseD = base.d
+                            const wScale = (tx.wScale || 1)
+                            const dScale = (tx.dScale || 1)
+                            const sx = baseW * wScale
+                            const sz = baseD * dScale
+                            let cx = base.cx + (tx.dx || 0)
+                            let cz = base.cz + (tx.dz || 0)
+                            const dw = (sx - baseW) / 2
+                            const dd = (sz - baseD) / 2
+                            switch (base.edge) {
+                                case 'bottom': { cx += dw; cz += dd; break }
+                                case 'top': { cx += dw; cz -= dd; break }
+                                case 'left': { cz += dw; cx += dd; break }
+                                case 'right': { cz += dw; cx -= dd; break }
+                                default: break
+                            }
+                            const y = 0.004
+                            const rotY = tx.rot || 0
+                            const getRemaining = () => {
+                                const now = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+                                const rem = (flash.until - now) / (flash.duration || 200)
+                                return Math.max(0, Math.min(1, rem))
+                            }
+                            groups.push(
+                                <group key={`flash-${pid}-${ti}`} position={[cx, y, cz]} rotation={[0, rotY, 0]}>
+                                    <FlashFade x={0} z={0} y={0} sx={sx} sz={sz} getRemaining={getRemaining} color="#ffffff" maxOpacity={0.50} />
+                                </group>
+                            )
+                        }
+                    }
+                    return <group>{groups}</group>
+                })()}
+
                 {/* Tokens */}
                 {!getDevFlag('disableTokens') && plist.map((p, idx) => {
                     const tileIndex = (p.position + (displayOffset % 40) + 40) % 40
@@ -2107,6 +2327,7 @@ function Board3D({
                                 routeCacheRef.current[p.id] = route
                                 fromCacheRef.current[p.id] = startStep.to
                                 yawFromCacheRef.current[p.id] = startStep.yaw
+                                routeStartAtRef.current[p.id] = (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
                                 // Mark processed target so we don't enqueue it again
                                 lastProcessedTargetRef.current[p.id] = tileIndex
@@ -2157,7 +2378,8 @@ function Board3D({
                                         route={route}
                                         initialFrom={startFrom}
                                         initialYaw={startYaw}
-                                        stepMs={222}
+                                        startAt={routeStartAtRef.current[p.id] || (typeof performance !== 'undefined' ? performance.now() : Date.now())}
+                                        stepMs={2220}
                                         hopHeight={0.40}
                                         onStart={() => {
                                             // cancel any previously scheduled "complete" from an earlier hop
@@ -2167,6 +2389,45 @@ function Board3D({
                                             movingRef.current.add(p.id)
                                             onTokenRouteStart?.(p.id)
                                         }}
+                                        onStepStart={(i) => {
+                                            try {
+                                                const r = routeCacheRef.current[p.id] || route
+                                                const step = r[i]
+                                                if (step) {
+                                                    const to = step.to
+                                                    const ti = tileIndexFromPosition(to[0], to[2], topSize, pathDirection, indexRotation)
+                                                    currentHopTileRef.current[p.id] = ti
+                                                }
+                                                // ensure highlight group mounts promptly
+                                                forceScene(v => v + 1)
+                                            } catch { }
+                                        }}
+                                        onProgress={(phase, i) => {
+                                            try {
+                                                routePhaseRef.current[p.id] = phase
+                                                const r = routeCacheRef.current[p.id] || route
+                                                const step = r[i]
+                                                if (step) {
+                                                    const to = step.to
+                                                    const ti = tileIndexFromPosition(to[0], to[2], topSize, pathDirection, indexRotation)
+                                                    currentHopTileRef.current[p.id] = ti
+                                                }
+                                            } catch { }
+                                        }}
+                                        onStepEnd={(i) => {
+                                            try {
+                                                const r = routeCacheRef.current[p.id] || route
+                                                const step = r[i]
+                                                if (step) {
+                                                    const to = step.to
+                                                    const tile = tileIndexFromPosition(to[0], to[2], topSize, pathDirection, indexRotation)
+                                                    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+                                                    routeFlashRef.current[p.id] = { tile, until: now + 200, duration: 200 }
+                                                    // ensure flash appears immediately
+                                                    forceScene(v => v + 1)
+                                                }
+                                            } catch { }
+                                        }}
                                         onDone={() => {
                                             // Commit final tile + clear caches
                                             prevTileRef.current[p.id] = tileIndex
@@ -2175,6 +2436,11 @@ function Board3D({
                                             delete routeCacheRef.current[p.id]
                                             delete fromCacheRef.current[p.id]
                                             delete yawFromCacheRef.current[p.id]
+                                            delete currentHopTileRef.current[p.id]
+                                            delete routePhaseRef.current[p.id]
+                                            delete routeFlashRef.current[p.id]
+                                            // sync removal of highlights
+                                            forceScene(v => v + 1)
 
                                             // Clear any pending completion and schedule a single debounced one
                                             const prevTimer = completeTimersRef.current[p.id]
@@ -2244,11 +2510,3 @@ function Board3D({
 }
 
 export default memo(Board3D)
-
-
-
-
-
-
-
-
