@@ -77,9 +77,14 @@ export type Player = {
 export type DeckCard =
   | { id: string; kind: 'money'; amount: number; text: string }
   | { id: string; kind: 'move'; to: number; passGo?: boolean; text: string }
+  | { id: string; kind: 'moveSteps'; steps: number; text: string }
   | { id: string; kind: 'gotojail'; text: string }
   | { id: string; kind: 'getoutofjail'; text: string }
-// (You can add repairs/fees-by-building later)
+  | { id: string; kind: 'feePerHouseHotel'; perHouse: number; perHotel: number; text: string }
+  | { id: string; kind: 'nearestUtilityPayTenDice'; text: string }
+  | { id: string; kind: 'nearestStationDoubleRent'; text: string }
+  | { id: string; kind: 'collectFromEach'; amount: number; text: string }
+  | { id: string; kind: 'payEach'; amount: number; text: string }
 
 export type Auction = {
   active: boolean
@@ -108,6 +113,10 @@ export type RoomState = {
   bank: Bank
   auction: Auction
   lastDice: Dice | null
+  // Last drawn deck card (legacy 3D display hook)
+  lastCard?: { deck: 'chance' | 'community'; index: number; ts: number }
+  // Pending card awaiting client confirmation (deferred effect)
+  pendingCard?: { deck: 'chance' | 'community'; card: DeckCard; index: number; playerId: string; ts: number }
 }
 
 export type ClientEvent =
@@ -130,6 +139,7 @@ export type ClientEvent =
   // NEW:
   | { type: 'readyToggle' }
   | { type: 'kick'; playerId: string }
+  | { type: 'continueCard' }
 
 export type ServerEvent =
   | { type: 'state'; state: RoomState }

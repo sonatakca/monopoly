@@ -16,3 +16,12 @@ const diceClips = [
 ]
 diceClips.forEach(k => useGLTF.preload?.(`/animations/dice ${k}.glb`))
 
+// Preload chance/community card textures (fronts + backs)
+try {
+  for (let i = 0; i < 16; i++) {
+    useTexture.preload?.(`/kamuFonuVeSans/sans${i}.png`)
+    useTexture.preload?.(`/kamuFonuVeSans/kamufonu${i}.png`)
+  }
+  useTexture.preload?.('/kamuFonuVeSans/sansB.png')
+  useTexture.preload?.('/kamuFonuVeSans/kamuFonuB.png')
+} catch {}

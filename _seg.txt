@@ -1,0 +1,4 @@
+                      <span style={{ opacity: 0.85 }}> — {p.cash}₺</span>
+                      {ready !== undefined && (
+                        <span style={{ marginLeft: 6, opacity: 0.75 }}>({ready ? 'hazır' : 'bekliyor'})</span>
+                      )}

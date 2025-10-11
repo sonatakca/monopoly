@@ -65,17 +65,43 @@ function sendToJail(p: Player) {
 
 // --- decks (minimal but functional) ----------------------------------
 function makeDeck(seed: string): { chance: DeckCard[]; community: DeckCard[] } {
+  // Şans (Chance) 0..15
   const chance: DeckCard[] = [
-    { id:'ch_go', kind:'move', to: GO_SPACE, passGo:true, text:'Advance to GO' },
-    { id:'ch_jail', kind:'gotojail', text:'Go to Jail' },
-    { id:'ch_50', kind:'money', amount: 50, text:'Bank pays you dividend of 50' },
-    { id:'ch_getout', kind:'getoutofjail', text:'Get Out of Jail Free' },
+    { id:'sans0',  kind:'move', to: 24, passGo:true, text:'İlerle: 24 (GO’dan geçersen 200 al)'} ,
+    { id:'sans1',  kind:'nearestUtilityPayTenDice', text:'En yakın kamu kuruluşuna; sahipse zar×10 öde' },
+    { id:'sans2',  kind:'move', to: GO_SPACE, passGo:true, text:'Başlangıca ilerle +200' },
+    { id:'sans3',  kind:'nearestStationDoubleRent', text:'En yakın istasyona; sahipse 2× kira öde' },
+    { id:'sans4',  kind:'nearestStationDoubleRent', text:'En yakın istasyona; sahipse 2× kira öde' },
+    { id:'sans5',  kind:'move', to: 37, passGo:false, text:'37’ye ilerle; 200 alma' },
+    { id:'sans6',  kind:'gotojail', text:'Kodes’e git; 200 alma' },
+    { id:'sans7',  kind:'money', amount: 50, text:'+50' },
+    { id:'sans8',  kind:'moveSteps', steps: -3, text:'3 adım geri' },
+    { id:'sans9',  kind:'money', amount: -15, text:'-15' },
+    { id:'sans10', kind:'payEach', amount: 50, text:'Her oyuncuya 50 öde' },
+    { id:'sans11', kind:'feePerHouseHotel', perHouse: 25, perHotel: 100, text:'Her ev 25, her otel 100 öde' },
+    { id:'sans12', kind:'money', amount: 50, text:'+50' },
+    { id:'sans13', kind:'money', amount: 150, text:'+150' },
+    { id:'sans14', kind:'move', to: 11, passGo:true, text:'11’e ilerle; GO’dan geçersen 200' },
+    { id:'sans15', kind:'move', to: 35, passGo:true, text:'35’e ilerle; GO’dan geçersen 200' },
   ]
+  // Kamu Fonu (Community Chest) 0..15
   const community: DeckCard[] = [
-    { id:'co_go', kind:'move', to: GO_SPACE, passGo:true, text:'Advance to GO' },
-    { id:'co_jail', kind:'gotojail', text:'Go to Jail' },
-    { id:'co_100', kind:'money', amount: 100, text:'You inherit 100' },
-    { id:'co_getout', kind:'getoutofjail', text:'Get Out of Jail Free' },
+    { id:'kamufonu0',  kind:'money', amount: 50, text:'+50' },
+    { id:'kamufonu1',  kind:'feePerHouseHotel', perHouse: 25, perHotel: 100, text:'Ev başı 25, otel başı 100 öde' },
+    { id:'kamufonu2',  kind:'move', to: GO_SPACE, passGo:true, text:'Başlangıca ilerle +200' },
+    { id:'kamufonu3',  kind:'money', amount: -50, text:'-50' },
+    { id:'kamufonu4',  kind:'money', amount: -100, text:'-100' },
+    { id:'kamufonu5',  kind:'money', amount: -50, text:'-50' },
+    { id:'kamufonu6',  kind:'money', amount: 25, text:'+25' },
+    { id:'kamufonu7',  kind:'money', amount: 10, text:'+10' },
+    { id:'kamufonu8',  kind:'money', amount: 200, text:'+200' },
+    { id:'kamufonu9',  kind:'money', amount: 50, text:'+50' },
+    { id:'kamufonu10', kind:'collectFromEach', amount: 10, text:'Her oyuncudan +10 al' },
+    { id:'kamufonu11', kind:'money', amount: 100, text:'+100' },
+    { id:'kamufonu12', kind:'money', amount: 20, text:'+20' },
+    { id:'kamufonu13', kind:'money', amount: 100, text:'+100' },
+    { id:'kamufonu14', kind:'money', amount: 100, text:'+100' },
+    { id:'kamufonu15', kind:'gotojail', text:'Direkt kodes; 200 alma' },
   ]
   // deterministic shuffle
   const rng = crypto.createHash('sha256').update(seed).digest()
@@ -327,26 +353,93 @@ function landOn(state: RoomState, p: Player, space: BoardSpace, log: string[]) {
   }
 }
 
-function drawCard(state: any, p: Player, which: 'chance'|'community', log: string[]) {
-  const deck = state.deck[which]
-  const card = deck.shift()!
-  deck.push(card)
-  log.push(`${p.name} kart çekti: ${card.text}`)
+function applyCardEffect(state: any, p: Player, card: DeckCard, log: string[]) {
   switch (card.kind) {
-    case 'money':
+    case 'money': {
       if (card.amount >= 0) credit(p, card.amount); else pay(p, 'bank', -card.amount)
-      break
-    case 'move':
+      return
+    }
+    case 'move': {
       goTo(p, card.to, { passGo: !!card.passGo })
       landOn(state, p, board.spaces[p.position], log)
-      break
-    case 'gotojail':
+      return
+    }
+    case 'moveSteps': {
+      move(p, card.steps)
+      landOn(state, p, board.spaces[p.position], log)
+      return
+    }
+    case 'gotojail': {
       sendToJail(p)
-      break
-    case 'getoutofjail':
+      return
+    }
+    case 'getoutofjail': {
       p.getOutOfJail++
-      break
+      return
+    }
+    case 'feePerHouseHotel': {
+      const houses = Object.values(p.houses || {}).reduce<number>((a, b) => a + (b as number), 0)
+      const hotels = Object.values(p.hotels || {}).reduce<number>((a, b) => a + (b as number), 0)
+      const amt = (card.perHouse * houses) + (card.perHotel * hotels)
+      if (amt > 0) pay(p, 'bank', amt)
+      return
+    }
+    case 'nearestUtilityPayTenDice': {
+      const utils = board.spaces.filter(s => s.type === 'UTILITY').map(s => s.id).sort((a,b)=>a-b)
+      const dest = utils.find(id => id > p.position) ?? utils[0]
+      const passGo = dest <= p.position
+      goTo(p, dest, { passGo })
+      const owner = ownerOf(state, dest)
+      if (owner && owner.id !== p.id && !(board.spaces[dest] as any).mortgaged) {
+        const d1 = 1 + Math.floor(Math.random() * 6)
+        const d2 = 1 + Math.floor(Math.random() * 6)
+        const fee = 10 * (d1 + d2)
+        chargeOrBankrupt(state, p, owner, fee, log)
+      }
+      return
+    }
+    case 'nearestStationDoubleRent': {
+      const stations = board.spaces.filter(s => s.type === 'STATION').map(s => s.id).sort((a,b)=>a-b)
+      const dest = stations.find(id => id > p.position) ?? stations[0]
+      const passGo = dest <= p.position
+      goTo(p, dest, { passGo })
+      const owner = ownerOf(state, dest)
+      if (owner && owner.id !== p.id && !(board.spaces[dest] as any).mortgaged) {
+        const due = rentDue(state, board.spaces[dest], (state.lastDice?.sum || 0))
+        chargeOrBankrupt(state, p, owner, due * 2, log)
+      }
+      return
+    }
+    case 'collectFromEach': {
+      for (const other of Object.values<Player>(state.players)) {
+        if (other.id === p.id || other.bankrupt) continue
+        if (other.cash >= card.amount) { pay(other, p, card.amount) }
+        else { chargeOrBankrupt(state, other, p, card.amount, log) }
+      }
+      return
+    }
+    case 'payEach': {
+      for (const other of Object.values<Player>(state.players)) {
+        if (other.id === p.id || other.bankrupt) continue
+        chargeOrBankrupt(state, p, other, card.amount, log)
+      }
+      return
+    }
   }
+}
+
+function drawCard(state: any, p: Player, which: 'chance'|'community', log: string[]) {
+  if (state.pendingCard) return // avoid re-entrancy
+  const deck: DeckCard[] = state.deck[which]
+  const card = deck.shift()!
+  deck.push(card) // place at end immediately to keep queue ordering
+  // Publish pending card; parse numeric suffix for PNG index
+  let idx = -1
+  try { const m = String(card.id).match(/(\d+)$/); idx = m ? Number(m[1]) : -1 } catch {}
+  const now = Date.now()
+  state.pendingCard = { deck: which, card, index: Math.max(0, idx), playerId: p.id, ts: now }
+  state.lastCard = { deck: which, index: Math.max(0, idx), ts: now }
+  log.push(`${p.name} kart çekti.`)
 }
 
 // --- reducer ----------------------------------------------------------
@@ -398,6 +491,11 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
 
   if (!state.started) return [...out, { type: 'state', state }]
 
+  // Block critical actions while a card is pending (until continued)
+  if (state.pendingCard && (evt.type === 'roll' || evt.type === 'endTurn')) {
+    return [...out, { type: 'error', text: 'Kart etkin: Devam Et ile onaylayın.' }, { type: 'state', state }]
+  }
+
   // Bidding exception
   if (evt.type === 'bid' || evt.type === 'passBid') {
     if (!state.auction.active) return [...out, { type:'state', state }]
@@ -408,6 +506,18 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
   }
 
   const curId = state.order[state.turnIndex]
+  // Handle deferred card continuation
+  if (evt.type === 'continueCard') {
+    const pending = state.pendingCard
+    if (!pending) return [{ type: 'state', state }]
+    if (pending.playerId !== playerId) return [{ type: 'error', text: 'Sıran değil' }, { type: 'state', state }]
+    const mePlayer = state.players[playerId]
+    if (!mePlayer) return [{ type: 'state', state }]
+    applyCardEffect(state, mePlayer, pending.card, log)
+    state.pendingCard = undefined
+    out.push({ type: 'state', state })
+    return out
+  }
   const me = state.players[playerId]
   const isCur = (playerId === curId)
   if (!isCur) return [...out, { type: 'error', text: 'Sıran değil' }, { type: 'state', state }]

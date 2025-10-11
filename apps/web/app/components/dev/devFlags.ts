@@ -24,6 +24,7 @@ export type DevFlag =
   | 'useDevZoneJson'
   | 'tileZones'
   | 'dumpTileZones'
+  | 'getCurrentCamData'
 
 const LS_PREFIX = 'monopoly.dev.flag.'
 
@@ -36,6 +37,8 @@ export function ensureDevFlagsAPI() {
     w.MonopolyDev.set = (key: DevFlag, val: boolean) => {
       try { localStorage.setItem(LS_PREFIX + key, val ? '1' : '0') } catch {}
       w.MonopolyDev.flags[key] = !!val
+      // Broadcast a custom event so components can react immediately
+      try { window.dispatchEvent(new CustomEvent('monopoly.devflag', { detail: { key, val } })) } catch {}
     }
   }
   if (!w.MonopolyDev.get) {

@@ -152,6 +152,8 @@ io.on('connection', (socket) => {
 
     // After any state change, (re)schedule the turn timer if applicable
     scheduleTurnTimer(roomId)
+    // And schedule/clear auto-continue for pending cards
+    scheduleCardTimer(roomId)
   })
 
   socket.on('disconnect', () => {
@@ -168,6 +170,7 @@ io.on('connection', (socket) => {
       io.to(roomId).emit('event', { type: 'state', state } as ServerEvent)
       // If we removed someone who was up next/current, re-evaluate timer
       scheduleTurnTimer(roomId)
+      scheduleCardTimer(roomId)
     }
   })
 })
@@ -176,3 +179,21 @@ const PORT = Number(process.env.PORT || 8787)
 httpServer.listen(PORT, '0.0.0.0', () =>
   console.log(`Server on http://127.0.0.1:${PORT} (health: /health)`) 
 )
+// --- Pending card auto-continue timers -----------------------------------
+const cardTimers: Record<string, NodeJS.Timeout | null> = {}
+function clearCardTimer(rid: string) {
+  if (cardTimers[rid]) { clearTimeout(cardTimers[rid]!); cardTimers[rid] = null }
+}
+function scheduleCardTimer(rid: string) {
+  const state: any = rooms[rid]
+  clearCardTimer(rid)
+  if (!state?.started) return
+  const pending = state?.pendingCard
+  if (!pending) return
+  cardTimers[rid] = setTimeout(() => {
+    try {
+      const replies = reducer(state, pending.playerId, { type: 'continueCard' } as any)
+      for (const r of replies) io.to(rid).emit('event', r)
+    } catch {}
+  }, 30_000)
+}

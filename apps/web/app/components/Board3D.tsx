@@ -284,7 +284,50 @@ function DevCameraAPI({ controlsRef, setFollowPreset }: { controlsRef: React.Ref
             } catch (e) { console.warn('[Dev] loadCamera failed', e) }
         }
         w.MonopolyDev.clearCamera = () => { try { localStorage.removeItem('monopoly.dev.camera') } catch { } }
+        // Provide direct getter for current camera data
+        w.MonopolyDev.getCurrentCamData = () => {
+            try {
+                const tgt = controlsRef.current?.target
+                const data = {
+                    pos: [camera.position.x, camera.position.y, camera.position.z] as [number, number, number],
+                    target: tgt ? [tgt.x, tgt.y, tgt.z] as [number, number, number] : [0, 0, 0] as [number, number, number],
+                    fov: camera.fov,
+                }
+                console.log('[Dev] Current camera:', data)
+                return data
+            } catch (e) { console.warn('[Dev] getCurrentCamData failed', e); return null }
+        }
     }, [camera, controlsRef, setFollowPreset])
+
+    // React to dev flag: getCurrentCamData -> dump current camera JSON and copy to clipboard
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        const handler = (e: any) => {
+            const det = e?.detail || {}
+            if (det?.key === 'getCurrentCamData' && det?.val) {
+                try {
+                    const tgt = controlsRef.current?.target
+                    const data = {
+                        pos: [camera.position.x, camera.position.y, camera.position.z] as [number, number, number],
+                        target: tgt ? [tgt.x, tgt.y, tgt.z] as [number, number, number] : [0, 0, 0] as [number, number, number],
+                        fov: camera.fov,
+                    }
+                    const json = JSON.stringify(data, null, 2)
+                    console.log('[Dev] Current camera data:', data, '\nJSON:\n' + json)
+                    try { navigator.clipboard?.writeText?.(json) } catch { }
+                    // auto-reset the flag to false, so it can be triggered again easily
+                    try { (window as any).MonopolyDev?.set?.('getCurrentCamData', false) } catch { }
+                } catch (err) { console.warn('[Dev] getCurrentCamData flag handling failed', err) }
+            }
+        }
+        window.addEventListener('monopoly.devflag' as any, handler as any)
+        // If the flag is already set at mount, fire once
+        try {
+            const armed = getDevFlag('getCurrentCamData' as any)
+            if (armed) handler({ detail: { key: 'getCurrentCamData', val: true } })
+        } catch { }
+        return () => window.removeEventListener('monopoly.devflag' as any, handler as any)
+    }, [camera, controlsRef])
     return null
 }
 
@@ -2379,7 +2422,7 @@ function Board3D({
                                         initialFrom={startFrom}
                                         initialYaw={startYaw}
                                         startAt={routeStartAtRef.current[p.id] || (typeof performance !== 'undefined' ? performance.now() : Date.now())}
-                                        stepMs={2220}
+                                        stepMs={222}
                                         hopHeight={0.40}
                                         onStart={() => {
                                             // cancel any previously scheduled "complete" from an earlier hop

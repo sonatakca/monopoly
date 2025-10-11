@@ -1,0 +1,10 @@
+                return (
+                  <div key={`overlay-${pid}`} style={{ position: 'absolute', ...pos }}>
+                    <div style={chip}>
+                      <b style={{ opacity: 0.95 }}>{p.name}</b>
+                      <span style={{ opacity: 0.85 }}> — {p.cash}₺</span>
+                      {ready !== undefined && (
+                        <span style={{ marginLeft: 6, opacity: 0.75 }}>({ready ? 'hazır' : 'bekliyor'})</span>
+                      )}
+                    </div>
+                  </div>

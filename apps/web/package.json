@@ -9,6 +9,7 @@
   "dependencies": {
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.3.0",
+    "ldrs": "^1.1.7",
     "lucide-react": "^0.545.0",
     "next": "^15.0.0",
     "react": "^18.3.1",
