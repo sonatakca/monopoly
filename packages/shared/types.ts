@@ -117,6 +117,8 @@ export type RoomState = {
   lastCard?: { deck: 'chance' | 'community'; index: number; ts: number }
   // Pending card awaiting client confirmation (deferred effect)
   pendingCard?: { deck: 'chance' | 'community'; card: DeckCard; index: number; playerId: string; ts: number }
+  // Pending land-on resolution awaiting client arrival (defers rent/tax/cards until hop finishes)
+  pendingVisit?: { playerId: string; spaceId: number; diceSum: number; ts: number }
 }
 
 export type ClientEvent =
@@ -140,6 +142,8 @@ export type ClientEvent =
   | { type: 'readyToggle' }
   | { type: 'kick'; playerId: string }
   | { type: 'continueCard' }
+  // Client signals movement animation finished; server applies landOn now
+  | { type: 'arrived' }
 
 export type ServerEvent =
   | { type: 'state'; state: RoomState }

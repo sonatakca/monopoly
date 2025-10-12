@@ -139,6 +139,7 @@ export function createRoom(roomId: string): RoomState & {
     ready: {},
     phase: 'lobby',
     adminId: '',
+    pendingVisit: undefined,
   } as any
 }
 
@@ -361,12 +362,12 @@ function applyCardEffect(state: any, p: Player, card: DeckCard, log: string[]) {
     }
     case 'move': {
       goTo(p, card.to, { passGo: !!card.passGo })
-      landOn(state, p, board.spaces[p.position], log)
+      ;(state as any).pendingVisit = { playerId: p.id, spaceId: p.position, diceSum: (state as any).lastDice?.sum || 0, ts: Date.now() }
       return
     }
     case 'moveSteps': {
       move(p, card.steps)
-      landOn(state, p, board.spaces[p.position], log)
+      ;(state as any).pendingVisit = { playerId: p.id, spaceId: p.position, diceSum: (state as any).lastDice?.sum || 0, ts: Date.now() }
       return
     }
     case 'gotojail': {
@@ -535,7 +536,7 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
           mePlayer.inJail = false
           mePlayer.jailTurns = 0
           move(mePlayer, d1+d2)
-          landOn(state, mePlayer, board.spaces[mePlayer.position], log)
+          ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, ts: Date.now() }
         } else {
           mePlayer.jailTurns++
           if (mePlayer.jailTurns >= 3) {
@@ -543,7 +544,7 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
             mePlayer.inJail = false
             mePlayer.jailTurns = 0
             move(mePlayer, d1+d2)
-            landOn(state, mePlayer, board.spaces[mePlayer.position], log)
+            ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, ts: Date.now() }
           } else {
             log.push(`${mePlayer.name} hapiste kalıyor (${mePlayer.jailTurns}/3).`)
           }
@@ -565,7 +566,7 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
       }
 
       move(mePlayer, d1+d2)
-      landOn(state, mePlayer, board.spaces[mePlayer.position], log)
+      ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, ts: Date.now() }
       break
     }
 
@@ -616,6 +617,17 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
       break
     }
 
+    // Client signals arrival: resolve the space effects now
+    case 'arrived': {
+      const pv = (state as any).pendingVisit
+      if (!pv) break
+      if (pv.playerId !== playerId) break
+      const pl = state.players[playerId]
+      if (!pl) break
+      landOn(state, pl, board.spaces[pv.spaceId], log)
+      ;(state as any).pendingVisit = undefined
+      break
+    }
     default: break
   }
 

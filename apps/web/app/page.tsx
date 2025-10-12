@@ -1347,6 +1347,7 @@ export default function Home() {
                 if (playerId === socket.id) {
                   setAnimatingRoute(false);
                   setAnimatingMyMove(false);
+                  try { send({ type: 'arrived' } as any) } catch { }
                   flushTransfers();          // ΓåÉ add this
 
                   // If we deferred opening the modal during the hop, open it now (+100ms)
@@ -1755,6 +1756,7 @@ export default function Home() {
     </main >
   )
 }
+
 
 
 
