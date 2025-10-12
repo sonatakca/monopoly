@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useMemo, useState, useRef, Suspense, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, Suspense, useCallback } from 'react'
 import { socket } from '../lib/socket'
 import type { ServerEvent, ClientEvent, RoomState, Player } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
@@ -842,6 +842,14 @@ export default function Home() {
 
   // dice animation trigger & url selection based on server dice outcome
   const [rollTick, setRollTick] = useState(0)
+  const [dicePlaying, setDicePlaying] = useState(false)
+  const [suppressButtons, setSuppressButtons] = useState(false)
+  const suppressTimerRef = useRef<number | null>(null)
+  function armSuppress(ms: number) {
+    try { if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current as any) } catch {}
+    setSuppressButtons(true)
+    suppressTimerRef.current = window.setTimeout(() => setSuppressButtons(false), ms) as any
+  }
   // Rotate dice +90┬░ around Y each throw
   const diceRotation = useMemo<[number, number, number]>(() => {
     const step = rollTick % 8
@@ -864,7 +872,7 @@ export default function Home() {
       if (d0) lastSeenKey.current = `${d0.d1}-${d0.d2}-${d0.isDouble}`
     }
   }, [state])
-  useEffect(() => {
+  useLayoutEffect(() => {
     const d = state?.lastDice
     if (!d) return
     const key = `${d.d1}-${d.d2}-${d.isDouble}`
@@ -872,6 +880,7 @@ export default function Home() {
       lastSeenKey.current = key
       localRollPending.current = false
       setRollTick(t => t + 1)
+      setDicePlaying(true)
     }
   }, [state?.lastDice])
 
@@ -982,9 +991,20 @@ export default function Home() {
     const dotIndex = (offset + idxInOrder) % PLAYER_DOTS.length
     return PLAYER_DOTS[dotIndex]
   }, [state?.order, state?.turnIndex, effectiveOrder])
+  // Track any player's hop for gating overlays and controls for all viewers
+  const [anyAnimatingRoute, setAnyAnimatingRoute] = useState(false)
+  useEffect(() => {
+    const handler = (e: any) => {
+      try { setAnyAnimatingRoute(!!(e?.detail?.active ?? (window as any)?.MonopolyRouteActive)) } catch { setAnyAnimatingRoute(false) }
+    }
+    handler(null as any)
+    window.addEventListener('monopoly:routeActive', handler as any)
+    return () => window.removeEventListener('monopoly:routeActive', handler as any)
+  }, [])
   const showControls = useMemo(() => {
-    return !!(isMyTurn && !animatingRoute && (canRoll || canEndTurn) && !buyModal && !pendingCard)
-  }, [isMyTurn, animatingRoute, canRoll, canEndTurn, buyModal, pendingCard])
+    const suppress = localRollPending.current || dicePlaying || anyAnimatingRoute || suppressButtons
+    return !!(isMyTurn && !animatingRoute && !suppress && (canRoll || canEndTurn) && !buyModal && !pendingCard)
+  }, [isMyTurn, animatingRoute, canRoll, canEndTurn, buyModal, pendingCard, anyAnimatingRoute, dicePlaying, suppressButtons])
   const buyTimerRef = useRef<number | null>(null)
   function stopBuyTimer() {
     if (buyTimerRef.current != null) {
@@ -998,16 +1018,6 @@ export default function Home() {
   // Additional render gate: delay mounting the overlay for 2000ms
   const [buyRenderReady, setBuyRenderReady] = useState(false)
   const [animatingMyMove, setAnimatingMyMove] = useState(false)
-  // Track any player's hop for gating overlays for all viewers
-  const [anyAnimatingRoute, setAnyAnimatingRoute] = useState(false)
-  useEffect(() => {
-    const handler = (e: any) => {
-      try { setAnyAnimatingRoute(!!(e?.detail?.active ?? (window as any)?.MonopolyRouteActive)) } catch { setAnyAnimatingRoute(false) }
-    }
-    handler(null as any)
-    window.addEventListener('monopoly:routeActive', handler as any)
-    return () => window.removeEventListener('monopoly:routeActive', handler as any)
-  }, [])
   const pendingBuyTileRef = useRef<number | null>(null)
   const pendingBuyTimerRef = useRef<number | null>(null)
   useEffect(() => () => {
@@ -1347,7 +1357,7 @@ export default function Home() {
                 if (playerId === socket.id) {
                   setAnimatingRoute(false);
                   setAnimatingMyMove(false);
-                  try { send({ type: 'arrived' } as any) } catch { }
+                  try { send({ type: 'arrived' } as any); armSuppress(400) } catch { }
                   flushTransfers();          // ΓåÉ add this
 
                   // If we deferred opening the modal during the hop, open it now (+100ms)
@@ -1394,7 +1404,7 @@ export default function Home() {
                     trigger={rollTick}
                     mode={isMyTurn ? 'roller' : 'spectator'}
                     castShadows={!getDevFlag('disableDiceShadows')}
-                    onFinished={() => { /* hook if needed */ }}
+                    onFinished={() => { try { setDicePlaying(false) } catch {} }}
                   />
                 </Suspense>
               )}
@@ -1756,12 +1766,6 @@ export default function Home() {
     </main >
   )
 }
-
-
-
-
-
-
 
 
 
