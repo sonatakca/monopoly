@@ -1001,6 +1001,19 @@ export default function Home() {
     window.addEventListener('monopoly:routeActive', handler as any)
     return () => window.removeEventListener('monopoly:routeActive', handler as any)
   }, [])
+  // Pass GO: show immediate credit during hop
+  useEffect(() => {
+    const onPassGo = (e: any) => {
+      try {
+        const pid = e?.detail?.playerId as string
+        const amt = (board as any).goAmount || 200
+        moneyFxRef.current?.spawn({ kind: 'fromBank', toId: pid, amount: amt })
+        window.dispatchEvent(new CustomEvent('monopoly:applyCashNow', { detail: { playerId: pid, amount: amt } }))
+      } catch { }
+    }
+    window.addEventListener('monopoly:passGo', onPassGo as any)
+    return () => window.removeEventListener('monopoly:passGo', onPassGo as any)
+  }, [])
   const showControls = useMemo(() => {
     const suppress = localRollPending.current || dicePlaying || anyAnimatingRoute || suppressButtons
     return !!(isMyTurn && !animatingRoute && !suppress && (canRoll || canEndTurn) && !buyModal && !pendingCard)
@@ -1766,8 +1779,6 @@ export default function Home() {
     </main >
   )
 }
-
-
 
 
 

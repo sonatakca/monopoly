@@ -118,7 +118,7 @@ export type RoomState = {
   // Pending card awaiting client confirmation (deferred effect)
   pendingCard?: { deck: 'chance' | 'community'; card: DeckCard; index: number; playerId: string; ts: number }
   // Pending land-on resolution awaiting client arrival (defers rent/tax/cards until hop finishes)
-  pendingVisit?: { playerId: string; spaceId: number; diceSum: number; ts: number }
+  pendingVisit?: { playerId: string; spaceId: number; diceSum: number; passedGo?: boolean; ts: number }
 }
 
 export type ClientEvent =

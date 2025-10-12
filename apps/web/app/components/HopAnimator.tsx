@@ -15,17 +15,20 @@ type Props = {
   lastStepScale?: number
   // Scale only the last hop's height (e.g., 1.5 for 50% higher)
   lastHopScale?: number
+  // Called when a segment finishes (index of the finished segment)
+  onSegmentEnd?: (segIndex: number) => void
   onStart?: () => void
   onDone?: () => void
   children: React.ReactNode
 }
 
-export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight = 0.28, lastStepScale = 1, lastHopScale = 1, onStart, onDone, children }: Props) {
+export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight = 0.28, lastStepScale = 1, lastHopScale = 1, onSegmentEnd, onStart, onDone, children }: Props) {
   const groupRef = useRef<THREE.Group>(null)
   const posRef = useRef<[number, number, number] | null>(null)
   const yawRef = useRef<number>(0)
   const lastSeqRef = useRef<string>("")
   const startedRef = useRef(false)
+  const segRef = useRef<number>(-1)
 
   const key = useMemo(() => steps.map(s => `${s.to[0].toFixed(3)}:${s.to[2].toFixed(3)}`).join("|"), [steps])
 
@@ -34,6 +37,7 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
     if (lastSeqRef.current !== key) {
       lastSeqRef.current = key
       startedRef.current = false
+      segRef.current = -1
       // Initialize to first position if available
       if (steps.length) {
         posRef.current = steps[0].to
@@ -64,6 +68,12 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
     const totalDuration = baseDuration + lastDuration
 
     if (timeline >= totalDuration) {
+      // Signal end of the last segment if not already
+      if (segRef.current !== lastIndex) {
+        if (segRef.current >= 0) onSegmentEnd?.(segRef.current)
+        segRef.current = lastIndex
+        onSegmentEnd?.(lastIndex)
+      }
       const last = steps[steps.length - 1]
       posRef.current = last.to
       yawRef.current = last.yaw
@@ -84,6 +94,10 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
       seg = lastIndex
       const localMs = stepMs * lastScale
       tRaw = Math.min(1, (timeline - baseDuration) / localMs)
+    }
+    if (seg !== segRef.current) {
+      if (segRef.current >= 0) onSegmentEnd?.(segRef.current)
+      segRef.current = seg
     }
     const t = 1 - Math.pow(1 - tRaw, 3)
 

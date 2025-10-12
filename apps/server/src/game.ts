@@ -48,13 +48,13 @@ function credit(p: Player, amount: number) { p.cash += amount }
 function move(p: Player, steps: number) {
   const prev = p.position
   p.position = (p.position + steps) % 40
-  if (p.position < prev) p.cash += board.goAmount // passed GO
+  // Defer GO credit to arrival; do not change cash here
 }
 
 function goTo(p: Player, spaceId: number, { passGo }: { passGo?: boolean } = {}) {
   const prev = p.position
   p.position = spaceId
-  if (passGo && (spaceId <= prev)) p.cash += board.goAmount
+  // Defer GO credit to arrival; do not change cash here
 }
 
 function sendToJail(p: Player) {
@@ -361,13 +361,17 @@ function applyCardEffect(state: any, p: Player, card: DeckCard, log: string[]) {
       return
     }
     case 'move': {
+      const prevPos = p.position
       goTo(p, card.to, { passGo: !!card.passGo })
-      ;(state as any).pendingVisit = { playerId: p.id, spaceId: p.position, diceSum: (state as any).lastDice?.sum || 0, ts: Date.now() }
+      const passedGo = !!card.passGo && (p.position <= prevPos)
+      ;(state as any).pendingVisit = { playerId: p.id, spaceId: p.position, diceSum: (state as any).lastDice?.sum || 0, passedGo, ts: Date.now() }
       return
     }
     case 'moveSteps': {
+      const prevPos = p.position
       move(p, card.steps)
-      ;(state as any).pendingVisit = { playerId: p.id, spaceId: p.position, diceSum: (state as any).lastDice?.sum || 0, ts: Date.now() }
+      const passedGo = p.position < prevPos
+      ;(state as any).pendingVisit = { playerId: p.id, spaceId: p.position, diceSum: (state as any).lastDice?.sum || 0, passedGo, ts: Date.now() }
       return
     }
     case 'gotojail': {
@@ -535,16 +539,20 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
         if (d1 === d2) {
           mePlayer.inJail = false
           mePlayer.jailTurns = 0
+          const prevPos = mePlayer.position
           move(mePlayer, d1+d2)
-          ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, ts: Date.now() }
+          const passedGo = mePlayer.position < prevPos
+          ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, passedGo, ts: Date.now() }
         } else {
           mePlayer.jailTurns++
           if (mePlayer.jailTurns >= 3) {
             chargeOrBankrupt(state, mePlayer, 'bank', 50, log)
             mePlayer.inJail = false
             mePlayer.jailTurns = 0
+            const prevPos = mePlayer.position
             move(mePlayer, d1+d2)
-            ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, ts: Date.now() }
+            const passedGo = mePlayer.position < prevPos
+            ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, passedGo, ts: Date.now() }
           } else {
             log.push(`${mePlayer.name} hapiste kalıyor (${mePlayer.jailTurns}/3).`)
           }
@@ -565,8 +573,10 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
         break
       }
 
+      const prevPos = mePlayer.position
       move(mePlayer, d1+d2)
-      ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, ts: Date.now() }
+      const passedGo = mePlayer.position < prevPos
+      ;(state as any).pendingVisit = { playerId: mePlayer.id, spaceId: mePlayer.position, diceSum: (state as any).lastDice.sum, passedGo, ts: Date.now() }
       break
     }
 
@@ -624,6 +634,10 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
       if (pv.playerId !== playerId) break
       const pl = state.players[playerId]
       if (!pl) break
+      // Apply deferred GO credit if we passed GO during this movement
+      if (pv.passedGo) {
+        credit(pl, board.goAmount)
+      }
       landOn(state, pl, board.spaces[pv.spaceId], log)
       ;(state as any).pendingVisit = undefined
       break

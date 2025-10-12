@@ -1557,6 +1557,7 @@ function Board3D({
     const yawFromCacheRef = useRef<Record<string, number>>({})
     const routeStartAtRef = useRef<Record<string, number>>({})
     const hopStepsRef = useRef<Record<string, HopStep[]>>({})
+    const hopBreakRef = useRef<Record<string, { goSeg?: number; fired?: boolean }>>({})
     // Track current hop tile + phase per player for highlights
     const currentHopTileRef = useRef<Record<string, number>>({})
     const routePhaseRef = useRef<Record<string, number>>({})
@@ -2453,6 +2454,15 @@ function Board3D({
                                     // Preserve final tile yaw for the last hop
                                     if (hops.length) hops[hops.length - 1].yaw = finalStep.yaw
                                     hopStepsRef.current[p.id] = hops
+                                    // Record GO breakpoint segment (if we will arrive at tile 0 along the path)
+                                    try {
+                                        const goIdxInSeq = seq.indexOf(0)
+                                        if (goIdxInSeq >= 0) {
+                                            hopBreakRef.current[p.id] = { goSeg: goIdxInSeq, fired: false }
+                                        } else {
+                                            hopBreakRef.current[p.id] = { goSeg: undefined, fired: false }
+                                        }
+                                    } catch { hopBreakRef.current[p.id] = { goSeg: undefined, fired: false } }
                                 } catch { }
                                 // Mark processed target so we don't enqueue it again
                                 lastProcessedTargetRef.current[p.id] = tileIndex
@@ -2474,6 +2484,20 @@ function Board3D({
                     // Use cached hop steps and start time captured at route creation
                     const hopSteps: HopStep[] = hopStepsRef.current[p.id] || []
                     const hopStartAt = routeStartAtRef.current[p.id] ?? (typeof performance !== 'undefined' ? performance.now() : Date.now())
+                    // If route crosses GO (tile 0), schedule a pass-go event during the hop
+                    try {
+                        const goIdxInSeq = seq.indexOf(0)
+                        if (goIdxInSeq >= 0) {
+                            const stepIndexInBase = 1 + goIdxInSeq // baseSteps: [prev, ...seq, final]
+                            const STEP_MS = 260 // must match HopAnimator stepMs below
+                            const nowTs = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+                            const eta = hopStartAt + STEP_MS * stepIndexInBase
+                            const delay = Math.max(0, Math.round(eta - nowTs))
+                            setTimeout(() => {
+                                try { window.dispatchEvent(new CustomEvent('monopoly:passGo', { detail: { playerId: p.id } })) } catch { }
+                            }, delay)
+                        }
+                    } catch { }
 
                     const fallback = showFallbackSpheres ? (
                         <group position={idle.to}>
@@ -2558,6 +2582,15 @@ function Board3D({
                                         hopHeight={0.40}
                                         lastStepScale={2}
                                         lastHopScale={2}
+                                        onSegmentEnd={(seg) => {
+                                            try {
+                                                const bp = hopBreakRef.current[p.id]
+                                                if (bp && !bp.fired && bp.goSeg != null && seg === bp.goSeg) {
+                                                    bp.fired = true
+                                                    window.dispatchEvent(new CustomEvent('monopoly:passGo', { detail: { playerId: p.id } }))
+                                                }
+                                            } catch { }
+                                        }}
                                         onStart={() => { try { movingRef.current.add(p.id); setGlobalRouteActive(); onTokenRouteStart?.(p.id) } catch { } }}
                                         onDone={() => {
                                             try {
