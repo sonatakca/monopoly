@@ -1001,19 +1001,26 @@ export default function Home() {
     window.addEventListener('monopoly:routeActive', handler as any)
     return () => window.removeEventListener('monopoly:routeActive', handler as any)
   }, [])
-  // Pass GO: show immediate credit during hop
+  // Pass GO: show immediate credit during hop (only if server says this move earns GO)
   useEffect(() => {
     const onPassGo = (e: any) => {
       try {
         const pid = e?.detail?.playerId as string
         const amt = (board as any).goAmount || 200
+        const pv = (state as any)?.pendingVisit
+        const allowed = !!pv && pv.playerId === pid && pv.passedGo === true
+        if (!allowed) return
+        // Animate now
         moneyFxRef.current?.spawn({ kind: 'fromBank', toId: pid, amount: amt })
-        window.dispatchEvent(new CustomEvent('monopoly:applyCashNow', { detail: { playerId: pid, amount: amt } }))
+        // Advance our baseline snapshot by GO amount so later state diff only shows residuals
+        const curSnap = prevCashRef.current
+        const baseline = (curSnap[pid] != null) ? curSnap[pid]! : ((state as any)?.players?.[pid]?.cash ?? 0)
+        prevCashRef.current = { ...curSnap, [pid]: baseline + amt }
       } catch { }
     }
     window.addEventListener('monopoly:passGo', onPassGo as any)
     return () => window.removeEventListener('monopoly:passGo', onPassGo as any)
-  }, [])
+  }, [state?.pendingVisit, state?.players])
   const showControls = useMemo(() => {
     const suppress = localRollPending.current || dicePlaying || anyAnimatingRoute || suppressButtons
     return !!(isMyTurn && !animatingRoute && !suppress && (canRoll || canEndTurn) && !buyModal && !pendingCard)
@@ -1779,7 +1786,6 @@ export default function Home() {
     </main >
   )
 }
-
 
 
 
