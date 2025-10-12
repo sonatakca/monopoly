@@ -1310,7 +1310,7 @@ export default function Home() {
 
 
 
-              routeCompleteDelayMs={1000}
+              routeCompleteDelayMs={1000} routeStartDelayMs={2000}
               currentPlayerId={state?.order?.[state?.turnIndex ?? 0]}
               activityKey={activityTick}
               showHud={!!state?.started}
@@ -1745,6 +1745,8 @@ export default function Home() {
     </main >
   )
 }
+
+
 
 
 
