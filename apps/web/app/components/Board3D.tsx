@@ -2541,6 +2541,8 @@ function Board3D({
                                         startAt={hopStartAt}
                                         stepMs={260}
                                         hopHeight={0.40}
+                                        lastStepScale={2}
+                                        lastHopScale={2}
                                         onStart={() => { try { movingRef.current.add(p.id); onTokenRouteStart?.(p.id) } catch { } }}
                                         onDone={() => {
                                             try {
@@ -2622,5 +2624,4 @@ function Board3D({
 }
 
 export default memo(Board3D)
-
 

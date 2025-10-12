@@ -11,12 +11,16 @@ type Props = {
   startAt: number
   stepMs?: number
   hopHeight?: number
+  // Scale only the last hop's duration (e.g., 1.6 for 60% slower)
+  lastStepScale?: number
+  // Scale only the last hop's height (e.g., 1.5 for 50% higher)
+  lastHopScale?: number
   onStart?: () => void
   onDone?: () => void
   children: React.ReactNode
 }
 
-export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight = 0.28, onStart, onDone, children }: Props) {
+export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight = 0.28, lastStepScale = 1, lastHopScale = 1, onStart, onDone, children }: Props) {
   const groupRef = useRef<THREE.Group>(null)
   const posRef = useRef<[number, number, number] | null>(null)
   const yawRef = useRef<number>(0)
@@ -44,18 +48,44 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
 
   useFrame(() => {
     const now = performance.now()
-    const total = Math.max(0, steps.length - 1)
-    if (total <= 0) return
+    const segments = Math.max(0, steps.length - 1)
+    if (segments <= 0) return
 
     const timeline = now - startAt
     if (timeline < 0) return // waiting to start
 
     if (!startedRef.current) { startedRef.current = true; onStart?.() }
 
-    // Determine which segment we're in
-    const seg = Math.min(total - 1, Math.floor(timeline / stepMs))
-    const tRaw = Math.min(1, (timeline - seg * stepMs) / stepMs)
-    const t = 1 - Math.pow(1 - tRaw, 3) // ease-out cubic
+    const lastIndex = segments - 1
+    const lastScale = Math.max(0.0001, lastStepScale || 1)
+    const baseSegments = Math.max(0, segments - 1)
+    const baseDuration = baseSegments * stepMs
+    const lastDuration = segments > 0 ? stepMs * lastScale : 0
+    const totalDuration = baseDuration + lastDuration
+
+    if (timeline >= totalDuration) {
+      const last = steps[steps.length - 1]
+      posRef.current = last.to
+      yawRef.current = last.yaw
+      if (groupRef.current) {
+        groupRef.current.position.set(last.to[0], last.to[1], last.to[2])
+        groupRef.current.rotation.y = last.yaw
+      }
+      onDone?.()
+      return
+    }
+
+    let seg = 0
+    let tRaw = 0
+    if (timeline < baseDuration) {
+      seg = Math.min(baseSegments - 1, Math.floor(timeline / stepMs))
+      tRaw = Math.min(1, (timeline - seg * stepMs) / stepMs)
+    } else {
+      seg = lastIndex
+      const localMs = stepMs * lastScale
+      tRaw = Math.min(1, (timeline - baseDuration) / localMs)
+    }
+    const t = 1 - Math.pow(1 - tRaw, 3)
 
     const from = steps[seg]
     const to = steps[seg + 1]
@@ -63,7 +93,8 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
     const nz = from.to[2] + (to.to[2] - from.to[2]) * t
     const baseY = to.to[1]
     const distXZ = Math.hypot(to.to[0] - from.to[0], to.to[2] - from.to[2])
-    const hop = distXZ < 1e-5 ? 0 : hopHeight
+    const heightScale = seg === lastIndex ? (lastHopScale || 1) : 1
+    const hop = distXZ < 1e-5 ? 0 : hopHeight * heightScale
     const ny = baseY + Math.sin(Math.PI * t) * hop
 
     const wrap = (a: number) => (a + Math.PI * 3) % (Math.PI * 2) - Math.PI
@@ -77,7 +108,7 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
       groupRef.current.rotation.y = yaw
     }
 
-    if (seg >= total - 1 && tRaw >= 1) {
+    if (seg === lastIndex && tRaw >= 1) {
       onDone?.()
     }
   })
