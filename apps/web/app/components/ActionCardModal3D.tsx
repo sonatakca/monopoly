@@ -7,6 +7,8 @@ import * as THREE from "three"
 import { Undo, Redo } from "lucide-react"
 import { renderToStaticMarkup } from "react-dom/server"
 import ActionCard3D from "./ActionCard3D"
+import { MetallicActionButton } from "./GameButtons"
+import { ChevronRight } from "lucide-react"
 
 /** Convert a Lucide SVG React element into a CSS cursor data URL */
 function iconToCursor(icon: React.ReactElement, hotspotX = 12, hotspotY = 12) {
@@ -119,12 +121,14 @@ export default function ActionCardModal3D({
   onClose,
   onContinue,
   canContinue = true,
+  accentColor,
 }: {
   frontUrl: string
   backUrl: string
   onClose: () => void
   onContinue: () => void
   canContinue?: boolean
+  accentColor?: string
 }) {
   const TRANSITION_MS = 280
   const [visible, setVisible] = useState(false)
@@ -195,10 +199,16 @@ export default function ActionCardModal3D({
           <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} />
         </Canvas>
         {/* Continue button overlay */}
-        {showContinue && canContinue && (
+        {showContinue && (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'end center', pointerEvents: 'none' }}>
             <div style={{ marginBottom: 32, pointerEvents: 'auto' }}>
-              <button className="btn" onClick={onContinue}>Devam Et</button>
+              <MetallicActionButton
+                label="Devam Et"
+                icon={<ChevronRight size={18} />}
+                onClick={onContinue}
+                accentColor={accentColor || '#3b82f6'}
+                disabled={!canContinue}
+              />
             </div>
           </div>
         )}

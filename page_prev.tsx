@@ -1,21 +1,15 @@
-﻿'use client'
+'use client'
 
-import { useEffect, useMemo, useState, useRef, Suspense, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, Suspense } from 'react'
 import { socket } from '../lib/socket'
 import type { ServerEvent, ClientEvent, RoomState, Player } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
 import PropertyCard from './components/PropertyCard'
 import DiceRoll from './components/DiceRoll'
-import ActionCardModal3D from './components/ActionCardModal3D'
 import { DevFPS } from './components/dev/DevFeatures'
 import PlacementPanel from './components/dev/PlacementPanel'
-import LoadingOverlay from './components/LoadingOverlay'
 import { ensureDevFlagsAPI, getDevFlag } from './components/dev/devFlags'
 import RoomsList from './components/RoomsList'
-import { PLAYER_DOTS } from './components/playerColors'
-import GameButtons, { MetallicActionButton } from './components/GameButtons'
-import { DollarSign, Gavel } from 'lucide-react'
-import MoneyFx, { type MoneyFxHandle, type MoneyTransfer } from './components/MoneyFx'
 import board from '@shared/board.tr.json'
 import './preload-assets'
 const NAME_KEY = 'monopoly:name'
@@ -544,24 +538,6 @@ export default function Home() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const prevScrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const prevSceneSizeRef = useRef<{ w: number; h: number } | null>(null)
-  // Auto-scroll to board when the game transitions to started
-  const prevStartedRef = useRef<boolean | null>(null)
-  useEffect(() => {
-    const started = !!state?.started
-    if (prevStartedRef.current == null) { prevStartedRef.current = started; return }
-    if (prevStartedRef.current === false && started === true) {
-      const el = scenePanelRef.current
-      // Wait a tick for layout to settle, then scroll smoothly to the board
-      requestAnimationFrame(() => {
-        if (el && el.scrollIntoView) {
-          try { el.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' }) } catch { window.scrollTo({ top: (document.documentElement?.scrollHeight || document.body.scrollHeight), behavior: 'smooth' as any }) }
-        } else {
-          window.scrollTo({ top: (document.documentElement?.scrollHeight || document.body.scrollHeight), behavior: 'smooth' as any })
-        }
-      })
-    }
-    prevStartedRef.current = started
-  }, [state?.started])
   useEffect(() => {
     const onFs = () => {
       const fs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
@@ -937,19 +913,6 @@ export default function Home() {
   const canRoll = !!(isMyTurn && (!((state as any)?.lastDice) || ((state as any)?.lastDice?.isDouble === true)))
   const canEndTurn = !!(isMyTurn && !!((state as any)?.lastDice) && ((state as any)?.lastDice?.isDouble !== true))
   const [animatingRoute, setAnimatingRoute] = useState(false)
-  // Reset key for current player's activity timer (e.g., on roll, on card draw)
-  const [activityTick, setActivityTick] = useState(0)
-  const moneyFxRef = useRef<MoneyFxHandle | null>(null)
-  const [cardRects, setCardRects] = useState<Record<string, DOMRect>>({})
-  const prevCashRef = useRef<Record<string, number>>({})
-  const moneyQueueRef = useRef<MoneyTransfer[]>([])
-  const enqueueTransfers = (arr: MoneyTransfer[]) => { if (arr && arr.length) moneyQueueRef.current = moneyQueueRef.current.concat(arr) }
-  const flushTransfers = () => {
-    const list = moneyQueueRef.current
-    if (!list.length) return
-    list.forEach(tr => moneyFxRef.current?.spawn(tr))
-    moneyQueueRef.current = []
-  }
   // If landed on an unowned buyable tile, show only auction instead of end-turn
   const myTile = me?.position
   const showAuction = useMemo(() => {
@@ -971,20 +934,6 @@ export default function Home() {
 
   // --- Buy modal state: shows after a roll when landing on an unowned buyable space ---
   const [buyModal, setBuyModal] = useState<{ tile: number; progress: number } | null>(null)
-  // Show central game buttons only when there is an action to perform
-  const pendingCard: any = (state as any)?.pendingCard || null
-  const currentAccent = useMemo(() => {
-    const currentId = state?.order?.[state?.turnIndex ?? 0]
-    const idxInOrder = currentId ? effectiveOrder.indexOf(currentId) : -1
-    if (idxInOrder < 0) return '#f59e0b'
-    const SLOTS = 8
-    const offset = Math.max(0, Math.floor((SLOTS - effectiveOrder.length) / 2))
-    const dotIndex = (offset + idxInOrder) % PLAYER_DOTS.length
-    return PLAYER_DOTS[dotIndex]
-  }, [state?.order, state?.turnIndex, effectiveOrder])
-  const showControls = useMemo(() => {
-    return !!(isMyTurn && !animatingRoute && (canRoll || canEndTurn) && !buyModal && !pendingCard)
-  }, [isMyTurn, animatingRoute, canRoll, canEndTurn, buyModal, pendingCard])
   const buyTimerRef = useRef<number | null>(null)
   function stopBuyTimer() {
     if (buyTimerRef.current != null) {
@@ -1025,93 +974,6 @@ export default function Home() {
       after?.()
     }, FADE_MS)
   }
-
-  // Increment activity tick when current player rolls dice
-  const diceKey = `${(state as any)?.lastDice?.d1 ?? ''}-${(state as any)?.lastDice?.d2 ?? ''}-${(state as any)?.lastDice?.isDouble ?? ''}`
-  useEffect(() => {
-    if (state?.lastDice) setActivityTick((t) => t + 1)
-  }, [diceKey])
-
-  // Increment activity tick when a pending action card appears for current player
-  const currentId = state?.order?.[state?.turnIndex ?? 0]
-  const pendingTs = (state as any)?.pendingCard?.ts ?? 0
-  const pendingFor = (state as any)?.pendingCard?.playerId
-  useEffect(() => {
-    if (pendingTs && pendingFor && pendingFor === currentId) setActivityTick((t) => t + 1)
-  }, [pendingTs, pendingFor, currentId])
-
-  // Detect cash changes and trigger money animations (deferred until actions complete)
-  const hasPendingCard = !!((state as any)?.pendingCard)
-  useEffect(() => {
-    const st = state as any
-    if (!st?.players) return
-    const players = st.players || {}
-    const ids = Object.keys(players)
-    const prev = prevCashRef.current
-    const deltas: Record<string, number> = {}
-    ids.forEach(id => {
-      const cur = players[id]?.cash ?? 0
-      const old = prev[id] ?? cur
-      deltas[id] = cur - old
-    })
-    // Update snapshot
-    const snap: Record<string, number> = {}
-    ids.forEach(id => { snap[id] = players[id]?.cash ?? 0 })
-    prevCashRef.current = snap
-
-    const negatives = ids.filter(id => (deltas[id] || 0) < 0)
-    const positives = ids.filter(id => (deltas[id] || 0) > 0)
-    const sumNeg = -negatives.reduce((s, id) => s + Math.abs(deltas[id] || 0), 0)
-    const sumPos = positives.reduce((s, id) => s + (deltas[id] || 0), 0)
-
-    const transfers: MoneyTransfer[] = []
-    // Single payer → single receiver
-    if (negatives.length === 1 && positives.length === 1) {
-      const fromId = negatives[0]
-      const toId = positives[0]
-      const amt = Math.min(-deltas[fromId], deltas[toId])
-      if (amt > 0) transfers.push({ kind: 'playerToPlayer', fromId, toId, amount: amt })
-    }
-    // Many → one
-    else if (negatives.length >= 1 && positives.length === 1 && sumPos > 0) {
-      const toId = positives[0]
-      negatives.forEach(fromId => {
-        const amt = Math.abs(deltas[fromId])
-        if (amt > 0) transfers.push({ kind: 'playerToPlayer', fromId, toId, amount: amt })
-      })
-    }
-    // One → many
-    else if (negatives.length === 1 && positives.length >= 1 && sumNeg > 0) {
-      const fromId = negatives[0]
-      positives.forEach(toId => {
-        const amt = Math.abs(deltas[toId])
-        if (amt > 0) transfers.push({ kind: 'playerToPlayer', fromId, toId, amount: amt })
-      })
-    }
-    // To bank (tax/buy)
-    else if (negatives.length === 1 && positives.length === 0) {
-      const fromId = negatives[0]
-      const amt = Math.abs(deltas[fromId])
-      if (amt > 0) transfers.push({ kind: 'toBank', fromId, amount: amt })
-    }
-    // From bank (GO/reward)
-    else if (positives.length === 1 && negatives.length === 0) {
-      const toId = positives[0]
-      const amt = Math.abs(deltas[toId])
-      if (amt > 0) transfers.push({ kind: 'fromBank', toId, amount: amt })
-    }
-    if (!transfers.length) return
-
-    // Defer until actions complete: while animating route or while a card is pending
-    const shouldDefer = !!animatingMyMove || hasPendingCard
-    if (shouldDefer) enqueueTransfers(transfers)
-    else transfers.forEach(tr => moneyFxRef.current?.spawn(tr))
-  }, [state, cardRects, animatingMyMove, hasPendingCard])
-
-  // Flush queued money once both: no route animation and no pending card
-  useEffect(() => {
-    if (!animatingMyMove && !hasPendingCard) flushTransfers()
-  }, [animatingMyMove, hasPendingCard])
 
   const forwardWheelToCanvas = (e: React.WheelEvent) => {
     const c = sceneCanvasRef.current
@@ -1235,7 +1097,7 @@ export default function Home() {
         )}
         {/* Auto-start when all players are ready; no manual admin ordering button */}
         <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>
-          {connected ? `Bağlı (${socket.id})` : 'Bağlantı yok'} {err && `• ${err}`}
+          {connected ? `Bağlı (${socket.id})` : 'Bağlantı yok'} {err && `ΓÇó ${err}`}
         </span>
       </section>
       {/* Public rooms */}
@@ -1251,8 +1113,8 @@ export default function Home() {
             const isMe = pid === socket.id
             return (
               <div key={pid} style={{ padding: 8, border: '1px solid #ddd', borderRadius: 8, width: 260 }}>
-                <b>{p.name}</b>
-                <div style={{ fontSize: 12, opacity: 0.85 }}>{ready ? 'Hazır ✅' : 'Hazır değil ❌'}</div>
+                <b>{p.name}</b> - {p.cash} - Poz: {p.position} {pid === (state as any).adminId && <em>(admin)</em>}
+                <div style={{ fontSize: 12, opacity: 0.85 }}>{ready ? 'Hazır ✅' : 'Hazır değil ΓÅ│'}</div>
                 {isAdmin && !isMe && (
                   <div style={{ marginTop: 6 }}>
                     <button onClick={() => send({ type: 'kick', playerId: pid } as any)}>At</button>
@@ -1269,7 +1131,6 @@ export default function Home() {
 
       {/* 3D board */}
       <div ref={scenePanelRef} style={{ marginTop: 12, position: 'relative' }}>
-        <LoadingOverlay />
         {getDevFlag('showFPSTracker' as any) && (
           <DevFPS />
         )}
@@ -1277,7 +1138,7 @@ export default function Home() {
           <button onClick={() => setPreset(0)}>Kamera 1</button>
           <button onClick={() => setPreset(1)}>Kamera 2</button>
           <button onClick={() => setPreset(2)}>Kamera 3</button>
-          <button onClick={() => setPreset(3)}>Kamera 4</button><button onClick={() => setTopDown(true)}>Kuş Bakışı</button>
+          <button onClick={() => setPreset(3)}>Kamera 4</button><button onClick={() => setTopDown(true)}>Ku┼ƒ Bakı┼ƒı</button>
           <button onClick={toggleFullscreen}>{isFullscreen ? 'Pencere' : 'Tam Ekran'}</button>
         </div>
         {!getDevFlag('disable3D') && (
@@ -1311,33 +1172,16 @@ export default function Home() {
 
 
               routeCompleteDelayMs={1000}
-              currentPlayerId={state?.order?.[state?.turnIndex ?? 0]}
-              activityKey={activityTick}
-              showHud={!!state?.started}
-              onCardRectsChange={useCallback((map: Record<string, DOMRect>) => {
-                setCardRects(prev => {
-                  const a = Object.keys(prev), b = Object.keys(map)
-                  if (a.length !== b.length) return map
-                  for (const k of b) {
-                    const r1 = prev[k] as any, r2 = map[k] as any
-                    if (!r1 || !r2) return map
-                    const eps = 0.5
-                    if (Math.abs(r1.left - r2.left) > eps || Math.abs(r1.top - r2.top) > eps || Math.abs(r1.width - r2.width) > eps || Math.abs(r1.height - r2.height) > eps) return map
-                  }
-                  return prev
-                })
-              }, [])}
               onTokenRouteStart={(pid) => {
                 if (pid === socket.id) {
                   setAnimatingRoute(true);
                   setAnimatingMyMove(true);           // ΓåÉ add this
                 }
               }}
-              onTokenRouteComplete={({ playerId, tileIndex }: { playerId: string; tileIndex: number }) => {
-                if (playerId === socket.id) {
+              onTokenRouteComplete={(pid) => {
+                if (pid === socket.id) {
                   setAnimatingRoute(false);
-                  setAnimatingMyMove(false);
-                  flushTransfers();          // ΓåÉ add this
+                  setAnimatingMyMove(false);          // ΓåÉ add this
 
                   // If we deferred opening the modal during the hop, open it now (+100ms)
                   const t = pendingBuyTileRef.current;
@@ -1348,22 +1192,6 @@ export default function Home() {
                       setBuyModal({ tile: t, progress: 0 });
                     }, 100);
                   }
-
-                  // If we landed on an unowned buyable tile (e.g., via a card move), open buy modal
-                  try {
-                    const sp: any = (board as any).spaces?.[tileIndex]
-                    const ttype = sp?.type
-                    const isBuyable = ttype === 'PROPERTY' || ttype === 'STATION' || ttype === 'UTILITY'
-                    if (isBuyable) {
-                      const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
-                      if (!hasOwner) {
-                        if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current as any)
-                        pendingBuyTimerRef.current = window.setTimeout(() => {
-                          setBuyModal({ tile: tileIndex, progress: 0 })
-                        }, 100) as any
-                      }
-                    }
-                  } catch { }
                 }
               }}
 
@@ -1388,52 +1216,7 @@ export default function Home() {
                 </Suspense>
               )}
             </Board3D>
-            {/* Money animations overlay */}
-            <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
-            {/* Pending action card: show modal with Devam Et (Continue) */}
-            {pendingCard && (() => {
-              try {
-                const deck = String(pendingCard.deck || '')
-                const idx = Number(pendingCard.index || 0)
-                const isChance = deck === 'chance'
-                const frontUrl = isChance ? `/kamuFonuVeSans/sans${idx}.png` : `/kamuFonuVeSans/kamufonu${idx}.png`
-                const backUrl = isChance ? '/kamuFonuVeSans/sansB.png' : '/kamuFonuVeSans/kamufonuB.png'
-                const canContinueCard = !!isMyTurn
-                return (
-                  <ActionCardModal3D
-                    frontUrl={frontUrl}
-                    backUrl={backUrl}
-                    onClose={() => { /* overlay unmounts when server clears pendingCard */ }}
-                    onContinue={() => send({ type: 'continueCard' } as any)}
-                    canContinue={canContinueCard}
-                    accentColor={currentAccent}
-                  />
-                )
-              } catch { return null }
-            })()}
-            {state?.started && (
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 240ms ease' }}>
-                <GameButtons
-                  canRoll={!!canRoll && isMyTurn && !animatingRoute}
-                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute}
-                  showAuction={!!showAuction}
-                  onRoll={handleRollClick}
-                  onEndTurn={() => send({ type: 'endTurn' } as any)}
-                  accentColor={(() => {
-                    // Match PlayersStrip -> PlayerCard color assignment, which uses
-                    // an 8-slot grid with centered offset to pick PLAYER_DOTS.
-                    const currentId = state?.order?.[state?.turnIndex ?? 0]
-                    const idxInOrder = currentId ? effectiveOrder.indexOf(currentId) : -1
-                    if (idxInOrder < 0) return '#f59e0b'
-                    const SLOTS = 8
-                    const offset = Math.max(0, Math.floor((SLOTS - effectiveOrder.length) / 2))
-                    const dotIndex = (offset + idxInOrder) % PLAYER_DOTS.length
-                    return PLAYER_DOTS[dotIndex]
-                  })()}
-                />
-              </div>
-            )}
-            {false && (
+            {isMyTurn && !animatingRoute && (
               <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)' }}>
                   {canRoll && (
@@ -1536,7 +1319,7 @@ export default function Home() {
                       background: 'rgba(17,24,39,0.60)',
                       border: '1px solid rgba(255,255,255,0.14)',
                       boxShadow: '0 10px 42px rgba(0,0,0,0.35)',
-                      pointerEvents: 'auto',
+                      pointerEvents: 'auto', // ΓåÉ important
                       opacity: buyVisible ? 1 : 0,
                       transform: buyVisible ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.98)',
                       transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
@@ -1573,7 +1356,7 @@ export default function Home() {
                             {sp.name}
                           </div>
                           <div style={{ opacity: 0.85, fontSize: 12 }}>
-                            {sp.type === 'PROPERTY' ? 'Mülk' : sp.type === 'STATION' ? 'İstasyon' : sp.type === 'UTILITY' ? 'Kamu Hizmeti' : 'Satın alınabilir'}
+                            {sp.type === 'PROPERTY' ? 'M├╝lk' : sp.type === 'STATION' ? 'İstasyon' : sp.type === 'UTILITY' ? 'Kamu Hizmeti' : 'Satın alınabilir'}
                           </div>
                         </div>
                         {/* radial countdown */}
@@ -1618,29 +1401,32 @@ export default function Home() {
                             <span style={{ fontWeight: 800 }}>{price}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                            <span style={{ opacity: 0.9 }}>Cuzdanin</span>
+                            <span style={{ opacity: 0.9 }}>C├╝zdanın</span>
                             <span style={{ fontWeight: 800, color: canBuyNow ? '#34d399' : '#f87171' }}>{playerCash}</span>
                           </div>
 
                           <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                            <MetallicActionButton
-                              label={canBuyNow ? 'Satin Al' : 'Bakiye Yetersiz'}
-                              icon={<DollarSign size={18} />}
+                            <button
+                              className="btn"
                               onClick={doBuy}
-                              accentColor={currentAccent}
-                              disabled={!canBuyNow}
-                            />
-                            <MetallicActionButton
-                              label={'Acik Arttirma'}
-                              icon={<Gavel size={18} />}
+                            >
+                              Satın Al
+                            </button>
+                            <button
+                              className="btn"
                               onClick={doAuction}
-                              accentColor={currentAccent}
-                            />
+                              style={ghostBtn}
+                              onMouseDown={(e) => (e.currentTarget.style.transform = 'translateY(1px)')}
+                              onMouseUp={(e) => (e.currentTarget.style.transform = '')}
+                            >
+                              Açık Arttırma
+                            </button>
                           </div>
 
                           <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
-                            {canBuyNow ? 'Satin almak icin tikla' : 'Yetersiz bakiye'} - Acik arttirma ile herkese sans ver
+                            {canBuyNow ? 'Satın almak için tıkla' : 'Yetersiz bakiye'} ΓÇó Açık arttırma ile herkese ┼ƒans ver
                           </div>
+
                           {/* Countdown bar: full ΓåÆ 0 with smooth transform and solid color shift */}
                           {(() => {
                             const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1ΓåÆ0
@@ -1669,7 +1455,7 @@ export default function Home() {
                             }
 
                             return (
-                              <div style={track} aria-label="Kalan süre">
+                              <div style={track} aria-label="Kalan s├╝re">
                                 <div style={fill} />
                               </div>
                             )
@@ -1745,11 +1531,6 @@ export default function Home() {
     </main >
   )
 }
-
-
-
-
-
 
 
 

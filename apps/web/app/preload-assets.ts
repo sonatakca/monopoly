@@ -25,3 +25,13 @@ try {
   useTexture.preload?.('/kamuFonuVeSans/sansB.png')
   useTexture.preload?.('/kamuFonuVeSans/kamuFonuB.png')
 } catch {}
+
+// Preload metallic layer once at app init so buttons don't flash default styles
+try {
+  const w: any = typeof window !== 'undefined' ? window : null
+  if (w && !w.__metallicPreloaded) {
+    w.__metallicPreloaded = true
+    // fire-and-forget; library injects styles/class behavior
+    import('metallicss').catch(() => { try { w.__metallicPreloaded = false } catch {} })
+  }
+} catch {}

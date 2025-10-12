@@ -1,0 +1,23 @@
+              if (pid === socket.id) {
+                setAnimatingRoute(true);
+                setAnimatingMyMove(true);           // ← add this
+              }
+            }}
+            onTokenRouteComplete={(pid) => {
+              if (pid === socket.id) {
+                setAnimatingRoute(false);
+                setAnimatingMyMove(false);          // ← add this
+
+                // If we deferred opening the modal during the hop, open it now (+100ms)
+                const t = pendingBuyTileRef.current;
+                if (t != null) {
+                  pendingBuyTileRef.current = null;
+                  if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current as any);
+                  pendingBuyTimerRef.current = window.setTimeout(() => {
+                    setBuyModal({ tile: t, progress: 0 });
+                  }, 100);
+                }
+              }
+            }}
+
+            showLabels={false}

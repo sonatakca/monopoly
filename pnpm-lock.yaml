@@ -57,6 +57,9 @@ importers:
       lucide-react:
         specifier: ^0.545.0
         version: 0.545.0(react@18.3.1)
+      metallicss:
+        specifier: ^4.0.3
+        version: 4.0.3
       next:
         specifier: ^15.0.0
         version: 15.5.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -934,6 +937,9 @@ packages:
 
   meshoptimizer@0.18.1:
     resolution: {integrity: sha512-ZhoIoL7TNV4s5B6+rx5mC//fw8/POGyNxS/DZyCJeiZ12ScLfVwRE/GfsxwiTkMYYD5DmK2/JXnEVXqL4rF+Sw==}
+
+  metallicss@4.0.3:
+    resolution: {integrity: sha512-ux1x7cOTg/jlvlN1kqeUZvPpAvkpxvGP/a4OLBI2kCdyAE8cK4eJXVLzKP8nv/z3OvBrpXmBQfncXEhCjRkQIg==}
 
   methods@1.1.2:
     resolution: {integrity: sha512-iclAHeNqNm68zFtnZ0e+1L2yUIdvzNoauKU4WBA3VvH/vPFieF7qfRlwUZU+DA9P9bPXIS90ulxoUoCH23sV2w==}
@@ -2138,6 +2144,8 @@ snapshots:
       three: 0.180.0
 
   meshoptimizer@0.18.1: {}
+
+  metallicss@4.0.3: {}
 
   methods@1.1.2: {}
 

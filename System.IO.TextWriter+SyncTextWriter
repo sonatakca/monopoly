@@ -5319,6 +5319,4 @@
             }
         ]
     }
-  , { "tile": "10v", "label": "10v", "transform": { "dx": 0, "dz": 0, "rot": 0, "yaw": 0, "slots": {} } }
-  , { "tile": "10j", "label": "10j", "transform": { "dx": 0, "dz": 0, "rot": 0, "yaw": 0, "slots": {} } }
 ]

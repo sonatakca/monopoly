@@ -2,6 +2,7 @@
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
 import { Html, OrbitControls, useTexture } from '@react-three/drei'
 import PropertyCard3D from './PropertyCard3D'
+import PlayersStrip from './PlayersStrip'
 import PropertyCardModal3D from './PropertyCardModal3D'
 import { ensureDevFlagsAPI, getDevFlag } from '../components/dev/devFlags'
 import board from '@shared/board.tr.json'
@@ -74,8 +75,18 @@ type Props = {
     children?: ReactNode
 
     onTokenRouteStart?: (playerId: string) => void
-    onTokenRouteComplete?: (playerId: string) => void
+    onTokenRouteComplete?: ((info: { playerId: string; tileIndex: number }) => void) | ((playerId: string) => void)
     routeCompleteDelayMs?: number
+    /** Optional: invoked by the jail cinematic after fade-out to actually move the player to jail (10). */
+    onGoToJail?: (playerId: string) => void
+    /** Current player's id for HUD highlighting */
+    currentPlayerId?: string
+    /** Reset key for current player's activity timer */
+    activityKey?: number | string
+    /** Reports player card DOM rects so overlays can target them */
+    onCardRectsChange?: (map: Record<string, DOMRect>) => void
+    /** Whether to show HUD overlays (players strip etc.) */
+    showHud?: boolean
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -377,7 +388,7 @@ function ClickableBoardPlane({
     )
 }
 
-function TokenMesh({ cfg, position, yaw = 0 }: { cfg: TokenModel; position: [number, number, number]; yaw?: number }) {
+function TokenMesh({ cfg, position, yaw = 0, alpha = 1 }: { cfg: TokenModel; position: [number, number, number]; yaw?: number; alpha?: number }) {
     const src = useLoader(STLLoader, cfg.url) as THREE.BufferGeometry
     const geometry = useMemo(() => {
         const g = src.clone()
@@ -423,7 +434,7 @@ function TokenMesh({ cfg, position, yaw = 0 }: { cfg: TokenModel; position: [num
         <group position={[position[0], position[1], position[2]]} rotation={[0, yaw, 0]} scale={scale}>
             <group rotation={fixedTilt as any}>
                 <mesh ref={meshRef} geometry={geometry} castShadow>
-                    <meshStandardMaterial color={color} metalness={1.0} roughness={0.45} envMapIntensity={1.80} />
+                    <meshStandardMaterial color={color} metalness={1.0} roughness={0.45} envMapIntensity={1.80} transparent opacity={Math.max(0, Math.min(1, alpha))} />
                 </mesh>
             </group>
         </group>
@@ -963,6 +974,11 @@ function getZoneTxKey(key: string): ZoneTransform {
     }
     return BAKED_ZONE_TRANSFORMS[k] || { dx: 0, dz: 0, rot: 0, yaw: 0 }
 }
+
+// Decide jail sub-zone tag for tile 10 based on player state
+function jailZoneTag(tileIndex: number, player: Player): 'v' | 'j' | undefined {
+    return tileIndex === 10 ? (player.inJail ? 'j' : 'v') : undefined
+}
 function setZoneTx(tile: number, patch: Partial<ZoneTransform>) {
     const m = readTxMap()
     const k = String(tile)
@@ -1471,6 +1487,11 @@ function Board3D({
     onTokenRouteStart,
     onTokenRouteComplete,
     routeCompleteDelayMs = 0,
+    onGoToJail,
+    currentPlayerId,
+    activityKey,
+    onCardRectsChange,
+    showHud,
 }: Props) {
     // Ensure dev runtime API exists
     useEffect(() => { ensureDevFlagsAPI(); ensureDevZonesAPI() }, [])
@@ -1599,7 +1620,7 @@ function Board3D({
             const ov = placementOverrides?.[sourceIndex]?.[slot]
             const cfg = models[p.id]
             if (cfg?.url) {
-                const zoneTag: 'v' | 'j' | undefined = (tileIndex === 10) ? (p.inJail ? 'j' : 'v') : undefined
+                const zoneTag: 'v' | 'j' | undefined = jailZoneTag(tileIndex, p)
                 const [x, z] = (ov && sourceIndex !== 10) ? ov : positionFor(tileIndex, slot, topSize, pathDirection, indexRotation, zoneTag)
                 const nameKey = nameKeyFromUrl(cfg.url)
                 const y = tokenBaseY + (cfg.y ?? 0) + (cfg.offsetY ?? 0) + getGapY(nameKey)
@@ -1608,6 +1629,11 @@ function Board3D({
         }
         return positions
     }, [plist, displayOffset, occupancy, models, worldSize, pathDirection, indexRotation, placementOverrides, placementAliases, tokenBaseY, getGapY])
+
+    // Jail cinematic state per player
+    type JailCine = { phase: 'out' | 'wait' | 'in'; t0: number; startTile: number }
+    const jailCineRef = useRef<Record<string, JailCine | undefined>>({})
+    const setJailCine = (pid: string, val: JailCine | undefined) => { jailCineRef.current[pid] = val; forceScene(v => v + 1) }
 
     // Dev: expose a dump() that returns location + rotation details for every zone
     useEffect(() => {
@@ -1884,7 +1910,7 @@ function Board3D({
     }, [tileZonesEnabled, selZone, tzMap, topSize])
 
     return (
-        <div className="scene" style={{ cursor: (hoverTile != null ? 'pointer' : 'default') as any }}>
+        <div className="scene" style={{ position: 'relative', cursor: (hoverTile != null ? 'pointer' : 'default') as any }}>
             <Canvas
                 camera={{ fov: activePreset.fov ?? 56, position: activePreset.pos }}
                 shadows={shadowsEnabled}
@@ -2043,10 +2069,11 @@ function Board3D({
                                 const lx = dx * c - dz * s
                                 const lz = dx * s + dz * c
                                 const inside = Math.abs(lx) <= sx / 2 && Math.abs(lz) <= sz / 2
-                                setHoverTile(inside && !HIGHLIGHT_EXCLUDED.has(idx) ? idx : null)
+                                const next = (inside && !HIGHLIGHT_EXCLUDED.has(idx)) ? idx : null
+                                setHoverTile((prev) => (prev === next ? prev : next))
                             } catch { setHoverTile(null) }
                         }}
-                        onPointerOut={() => setHoverTile(null)}
+                        onPointerOut={() => setHoverTile((prev) => (prev == null ? prev : null))}
                         // Dev placement click: save intersections
                         onClick={(e: any) => {
                             try {
@@ -2409,11 +2436,66 @@ function Board3D({
                     return (
                         <Suspense key={p.id} fallback={fallback}>
                             {/* idle OR animated */}
-                            {route.length === 0 ? (
+                            {(() => {
+                                const cine = jailCineRef.current[p.id]
+                                if (cine) {
+                                    const orderIdx = order ? order.indexOf(p.id) : -1
+                                    const slot = Math.max(0, Math.min(7, orderIdx >= 0 ? orderIdx : 0))
+                                    const S = topSize
+                                    const dir = pathDirection
+                                    const rot = indexRotation
+                                    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+                                    const dt = Math.max(0, now - cine.t0)
+                                    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
+                                    const easeInCubic = (t: number) => Math.pow(t, 3)
+                                    if (cine.phase === 'out') {
+                                        const startTile = 30
+                                        const [x, z] = positionFor(startTile, slot, S, dir, rot)
+                                        const yBase = tokenPositions[p.id]?.[1] ?? tokenBaseY
+                                        const t = Math.min(1, dt / 600)
+                                        const y = yBase + easeOutCubic(t) * 1.0
+                                        const alpha = 1 - t
+                                        if (t >= 1) {
+                                            try { onGoToJail?.(p.id) } catch { }
+                                            setJailCine(p.id, { phase: 'wait', t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()), startTile })
+                                        }
+                                        return (
+                                            <group position={[x, y, z]} rotation={[0, yawToward(startTile, S, dir, rot), 0]}>
+                                                <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} alpha={alpha} />
+                                            </group>
+                                        )
+                                    }
+                                    if (cine.phase === 'wait') {
+                                        if (dt >= 400 && p.inJail && ((p.position + (displayOffset % 40) + 40) % 40) === 10) {
+                                            setJailCine(p.id, { phase: 'in', t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()), startTile: cine.startTile })
+                                        }
+                                        return null
+                                    }
+                                    const destTile = 10
+                                    const zoneTag: 'v' | 'j' | undefined = jailZoneTag(destTile, p)
+                                    const [dx, dz] = positionFor(destTile, slot, S, dir, rot, zoneTag)
+                                    const yBase = tokenPositions[p.id]?.[1] ?? tokenBaseY
+                                    const t = Math.min(1, dt / 500)
+                                    const y = yBase + (1.0 - easeInCubic(t)) * 1.0
+                                    const alpha = Math.min(1, t)
+                                    if (t >= 1) setJailCine(p.id, undefined)
+                                    const tx = getTxForTile(destTile, zoneTag)
+                                    const slotArr = tx?.slots?.[String(slot)]
+                                    const slotRot = (slotArr && slotArr[2]) ? slotArr[2] : 0
+                                    const yaw = yawToward(destTile, S, dir, rot) + (tx?.yaw || 0) + slotRot
+                                    return (
+                                        <group position={[dx, y, dz]} rotation={[0, yaw, 0]}>
+                                            <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} alpha={alpha} />
+                                        </group>
+                                    )
+                                }
+                                return null
+                            })()}
+                            {route.length === 0 && !jailCineRef.current[p.id] ? (
                                 <group position={idle.to} rotation={[0, idle.yaw, 0]}>
                                     <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} />
                                 </group>
-                            ) : (
+                            ) : (!jailCineRef.current[p.id] ? (
                                 <>
                                     <RouteAnimatedToken
                                         id={p.id}
@@ -2496,13 +2578,18 @@ function Board3D({
                                             completeTimersRef.current[p.id] = window.setTimeout(() => {
                                                 movingRef.current.delete(p.id)
                                                 completeTimersRef.current[p.id] = null
-                                                onTokenRouteComplete?.(p.id)
+                                                if (tileIndex === 30) {
+                                                    setJailCine(p.id, { phase: 'out', t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()), startTile: 30 })
+                                                }
+                                                try {
+                                                    (onTokenRouteComplete as any)?.({ playerId: p.id, tileIndex })
+                                                } catch { }
                                             }, delay) as any
                                         }}
                                     />
                                     {debugOn && <RouteDebugger id={p.id} start={startFrom} steps={route} />}
                                 </>
-                            )}
+                            ) : null)}
                         </Suspense>
                     )
                 })}
@@ -2516,7 +2603,8 @@ function Board3D({
                     const slot = Math.max(0, Math.min(7, orderIdx >= 0 ? orderIdx : 0))
                     const sourceIndex = placementAliases?.[tileIndex] ?? tileIndex
                     const ov = placementOverrides?.[sourceIndex]?.[slot]
-                    const [x, z] = ov ? ov : positionFor(tileIndex, slot, topSize, pathDirection, indexRotation)
+                    const zoneTag: 'v' | 'j' | undefined = jailZoneTag(tileIndex, p)
+                    const [x, z] = ov ? ov : positionFor(tileIndex, slot, topSize, pathDirection, indexRotation, zoneTag)
                     return (
                         <group key={`disabled-${p.id}`} position={[x, tokenBaseY, z]}>
                             <mesh castShadow>
@@ -2544,6 +2632,12 @@ function Board3D({
                 )}                {/* Extra scene content (e.g., animated dice) */}
                 {children}
             </Canvas>
+            {/* Players strip HUD over the map (hidden until game starts) */}
+            {showHud && (
+                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 12px', zIndex: 25, pointerEvents: 'auto' }}>
+                    <PlayersStrip players={players as any} order={order as any} currentId={currentPlayerId} activityKey={activityKey} onCardRectsChange={onCardRectsChange} />
+                </div>
+            )}
             {/* Fullscreen 3D property card viewer over a blue background */}
             {openCardId != null && (
                 <PropertyCardModal3D id={openCardId} onClose={() => setOpenCardId(null)} />
