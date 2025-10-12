@@ -156,8 +156,8 @@ export default function ActionCardModal3D({
   }, [readyAt])
 
   const active = visible && !closing
-  const blurPx = active ? 8 : 0
-  const bgAlpha = active ? 0.35 : 0
+  const blurPx = active ? 0 : 0
+  const bgAlpha = active ? 0 : 0
   const cardOpacity = active ? 1 : 0
 
   return (

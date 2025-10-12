@@ -15,6 +15,7 @@ import bakedTokenZonesRaw from '../../public/baked-in-content/token-zones.json'
 import type { Player } from '@shared/types'
 import { DEFAULT_TOKEN_GAPS_Y, DEFAULT_TOKEN_SCALES } from '@shared/tokens'
 import { DEFAULT_TOKEN_ROTATION } from '@shared/tokenRotation'
+import HopAnimator, { type HopStep } from './HopAnimator'
 
 type Lighting = {
     ambient?: number
@@ -77,6 +78,8 @@ type Props = {
     onTokenRouteStart?: (playerId: string) => void
     onTokenRouteComplete?: ((info: { playerId: string; tileIndex: number }) => void) | ((playerId: string) => void)
     routeCompleteDelayMs?: number
+    /** Optional: wait before starting a route (e.g., show dice result) */
+    routeStartDelayMs?: number
     /** Optional: invoked by the jail cinematic after fade-out to actually move the player to jail (10). */
     onGoToJail?: (playerId: string) => void
     /** Current player's id for HUD highlighting */
@@ -324,7 +327,7 @@ function DevCameraAPI({ controlsRef, setFollowPreset }: { controlsRef: React.Ref
                         fov: camera.fov,
                     }
                     const json = JSON.stringify(data, null, 2)
-                    console.log('[Dev] Current camera data:', data, '\nJSON:\n' + json)
+                    console.log('[Dev] Current camera data:', data, 'JSON:' + json)
                     try { navigator.clipboard?.writeText?.(json) } catch { }
                     // auto-reset the flag to false, so it can be triggered again easily
                     try { (window as any).MonopolyDev?.set?.('getCurrentCamData', false) } catch { }
@@ -495,6 +498,7 @@ function AnimatedToken({ id, cfg, to, yaw }: { id: string; cfg: TokenModel; to: 
 
 type RouteStep = { to: [number, number, number]; yaw: number; style?: 'hop' | 'linear' }
 
+// RouteAnimatedToken moved out — legacy inline component kept for reference (not used)
 function RouteAnimatedToken({
     id,
     cfg,
@@ -700,6 +704,7 @@ function RouteAnimatedToken({
 }
 
 // Route debugger: small visual markers for start and each step
+// RouteDebugger moved out — legacy inline component kept for reference (not used)
 function RouteDebugger({
     id,
     start,
@@ -1487,6 +1492,7 @@ function Board3D({
     onTokenRouteStart,
     onTokenRouteComplete,
     routeCompleteDelayMs = 0,
+    routeStartDelayMs = 0,
     onGoToJail,
     currentPlayerId,
     activityKey,
@@ -1550,10 +1556,25 @@ function Board3D({
     const fromCacheRef = useRef<Record<string, [number, number, number]>>({})
     const yawFromCacheRef = useRef<Record<string, number>>({})
     const routeStartAtRef = useRef<Record<string, number>>({})
+    const hopStepsRef = useRef<Record<string, HopStep[]>>({})
     // Track current hop tile + phase per player for highlights
     const currentHopTileRef = useRef<Record<string, number>>({})
     const routePhaseRef = useRef<Record<string, number>>({})
     const routeFlashRef = useRef<Record<string, { tile: number; until: number; duration: number }>>({})
+    // Defer route-start callbacks to after commit to avoid setState during render
+    const pendingStartRef = useRef<Set<string>>(new Set())
+    useEffect(() => {
+        if (pendingStartRef.current.size) {
+            const ids = Array.from(pendingStartRef.current)
+            pendingStartRef.current.clear()
+            try {
+                for (const id of ids) {
+                    movingRef.current.add(id)
+                    onTokenRouteStart?.(id)
+                }
+            } catch { }
+        }
+    })
     // Force a React re-render when highlight attachments change (step start/end, route done)
     const [, forceScene] = useState(0)
     // Guarded route logger to avoid spamming the console every frame
@@ -2338,7 +2359,8 @@ function Board3D({
                         lastSeenTileRef.current[p.id] ??
                         tileIndex;
                     const debugOn = getDevFlag('debugRoutes' as any)
-                    const routeDir = shortestDir(prev, tileIndex, pathDirection)
+                    // Hop direction should be opposite of the board path direction
+                    const routeDir: PathDirection = (pathDirection === 'clockwise') ? 'counterclockwise' : 'clockwise'
 
 
                     // Build a step at any tile index (final step may apply overrides/aliases)
@@ -2353,7 +2375,8 @@ function Board3D({
                         const py = tokenBaseY + (cfg.y ?? 0) + (cfg.offsetY ?? 0) + getGapY(nameKey)
                         const txFor = getTxForTile(sourceIndex, zoneTag)
                         const slotRot = (txFor?.slots?.[String(slot)] && (txFor.slots![String(slot)][2] || 0)) || 0
-                        const yaw = yawToward(ti, worldSize, routeDir, indexRotation) + (txFor?.yaw || 0) + slotRot
+                        const faceDir: PathDirection = isFinal ? pathDirection : routeDir
+                        const yaw = yawToward(ti, worldSize, faceDir, indexRotation) + (txFor?.yaw || 0) + slotRot
                         return { to: [px, py, pz] as [number, number, number], yaw }
                     }
 
@@ -2393,12 +2416,29 @@ function Board3D({
                                     }
                                 } catch { }
 
-                                // Seed caches so re-renders don't rewrite the queue mid-flight
+                                // Seed caches and set pre-route delay so dice result is visible
+                                const now = (typeof performance !== 'undefined' ? performance.now() : Date.now())
                                 routeCacheRef.current[p.id] = route
                                 fromCacheRef.current[p.id] = startStep.to
                                 yawFromCacheRef.current[p.id] = startStep.yaw
-                                routeStartAtRef.current[p.id] = (typeof performance !== 'undefined' ? performance.now() : Date.now())
-
+                                routeStartAtRef.current[p.id] = now + Math.max(0, routeStartDelayMs)
+                                // Queue start callback to run after commit (avoid setState in render)
+                                pendingStartRef.current.add(p.id)
+                                // Snapshot hop steps at route creation to keep them stable during UI updates
+                                try {
+                                    const baseSteps: HopStep[] = [
+                                        { to: [startStep.to[0], startStep.to[1], startStep.to[2]], yaw: startStep.yaw },
+                                        ...route.map((s) => ({ to: [s.to[0], s.to[1], s.to[2]] as [number, number, number], yaw: s.yaw })),
+                                    ]
+                                    const hops: HopStep[] = baseSteps.map((s) => ({ to: [s.to[0], s.to[1], s.to[2]] as [number, number, number], yaw: s.yaw }))
+                                    for (let i = 0; i < hops.length - 1; i++) {
+                                        const a = hops[i], b = hops[i + 1]
+                                        a.yaw = Math.atan2(b.to[0] - a.to[0], b.to[2] - a.to[2])
+                                    }
+                                    // Preserve final tile yaw for the last hop
+                                    if (hops.length) hops[hops.length - 1].yaw = finalStep.yaw
+                                    hopStepsRef.current[p.id] = hops
+                                } catch { }
                                 // Mark processed target so we don't enqueue it again
                                 lastProcessedTargetRef.current[p.id] = tileIndex
 
@@ -2416,6 +2456,9 @@ function Board3D({
                     const startFrom = fromCacheRef.current[p.id] || makeStep(tileIndex, true).to
                     const startYaw = yawFromCacheRef.current[p.id] ?? makeStep(tileIndex, true).yaw
                     const idle = makeStep(tileIndex, true)
+                    // Use cached hop steps and start time captured at route creation
+                    const hopSteps: HopStep[] = hopStepsRef.current[p.id] || []
+                    const hopStartAt = routeStartAtRef.current[p.id] ?? (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
                     const fallback = showFallbackSpheres ? (
                         <group position={idle.to}>
@@ -2491,105 +2534,37 @@ function Board3D({
                                 }
                                 return null
                             })()}
-                            {route.length === 0 && !jailCineRef.current[p.id] ? (
-                                <group position={idle.to} rotation={[0, idle.yaw, 0]}>
-                                    <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} />
-                                </group>
-                            ) : (!jailCineRef.current[p.id] ? (
-                                <>
-                                    <RouteAnimatedToken
-                                        id={p.id}
-                                        cfg={cfg}
-                                        route={route}
-                                        initialFrom={startFrom}
-                                        initialYaw={startYaw}
-                                        startAt={routeStartAtRef.current[p.id] || (typeof performance !== 'undefined' ? performance.now() : Date.now())}
-                                        stepMs={222}
+                            {!jailCineRef.current[p.id] && (
+                                (hopSteps.length >= 2) ? (
+                                    <HopAnimator
+                                        steps={hopSteps}
+                                        startAt={hopStartAt}
+                                        stepMs={260}
                                         hopHeight={0.40}
-                                        onStart={() => {
-                                            // cancel any previously scheduled "complete" from an earlier hop
-                                            const t = completeTimersRef.current[p.id]
-                                            if (t) { clearTimeout(t); completeTimersRef.current[p.id] = null }
-
-                                            movingRef.current.add(p.id)
-                                            onTokenRouteStart?.(p.id)
-                                        }}
-                                        onStepStart={(i) => {
-                                            try {
-                                                const r = routeCacheRef.current[p.id] || route
-                                                const step = r[i]
-                                                if (step) {
-                                                    const to = step.to
-                                                    const ti = tileIndexFromPosition(to[0], to[2], topSize, pathDirection, indexRotation)
-                                                    currentHopTileRef.current[p.id] = ti
-                                                }
-                                                // ensure highlight group mounts promptly
-                                                forceScene(v => v + 1)
-                                            } catch { }
-                                        }}
-                                        onProgress={(phase, i) => {
-                                            try {
-                                                routePhaseRef.current[p.id] = phase
-                                                const r = routeCacheRef.current[p.id] || route
-                                                const step = r[i]
-                                                if (step) {
-                                                    const to = step.to
-                                                    const ti = tileIndexFromPosition(to[0], to[2], topSize, pathDirection, indexRotation)
-                                                    currentHopTileRef.current[p.id] = ti
-                                                }
-                                            } catch { }
-                                        }}
-                                        onStepEnd={(i) => {
-                                            try {
-                                                const r = routeCacheRef.current[p.id] || route
-                                                const step = r[i]
-                                                if (step) {
-                                                    const to = step.to
-                                                    const tile = tileIndexFromPosition(to[0], to[2], topSize, pathDirection, indexRotation)
-                                                    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now())
-                                                    routeFlashRef.current[p.id] = { tile, until: now + 200, duration: 200 }
-                                                    // ensure flash appears immediately
-                                                    forceScene(v => v + 1)
-                                                }
-                                            } catch { }
-                                        }}
+                                        onStart={() => { try { movingRef.current.add(p.id); onTokenRouteStart?.(p.id) } catch { } }}
                                         onDone={() => {
-                                            // Commit final tile + clear caches
-                                            prevTileRef.current[p.id] = tileIndex
-                                            lastTileRef.current[p.id] = tileIndex
-                                            delete lastProcessedTargetRef.current[p.id]
-                                            delete routeCacheRef.current[p.id]
-                                            delete fromCacheRef.current[p.id]
-                                            delete yawFromCacheRef.current[p.id]
-                                            delete currentHopTileRef.current[p.id]
-                                            delete routePhaseRef.current[p.id]
-                                            delete routeFlashRef.current[p.id]
-                                            // sync removal of highlights
-                                            forceScene(v => v + 1)
-
-                                            // Clear any pending completion and schedule a single debounced one
-                                            const prevTimer = completeTimersRef.current[p.id]
-                                            if (prevTimer) {
-                                                clearTimeout(prevTimer)
-                                                completeTimersRef.current[p.id] = null
-                                            }
-
-                                            const delay = Math.max(0, routeCompleteDelayMs ?? 0)
-                                            completeTimersRef.current[p.id] = window.setTimeout(() => {
-                                                movingRef.current.delete(p.id)
-                                                completeTimersRef.current[p.id] = null
-                                                if (tileIndex === 30) {
-                                                    setJailCine(p.id, { phase: 'out', t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()), startTile: 30 })
-                                                }
-                                                try {
-                                                    (onTokenRouteComplete as any)?.({ playerId: p.id, tileIndex })
-                                                } catch { }
-                                            }, delay) as any
+                                            try {
+                                                // Commit final tile and clear moving flag
+                                                prevTileRef.current[p.id] = tileIndex;
+                                                movingRef.current.delete(p.id);
+                                                // Clear cached route so future moves can rebuild fresh timing/state
+                                                routeCacheRef.current[p.id] = [];
+                                                delete hopStepsRef.current[p.id];
+                                                delete routeStartAtRef.current[p.id];
+                                                delete fromCacheRef.current[p.id as any];
+                                                delete yawFromCacheRef.current[p.id as any];
+                                                (onTokenRouteComplete as any)?.({ playerId: p.id, tileIndex })
+                                            } catch { }
                                         }}
-                                    />
-                                    {debugOn && <RouteDebugger id={p.id} start={startFrom} steps={route} />}
-                                </>
-                            ) : null)}
+                                    >
+                                        <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} />
+                                    </HopAnimator>
+                                ) : (
+                                    <group position={idle.to} rotation={[0, idle.yaw, 0]}>
+                                        <TokenMesh cfg={cfg} position={[0, 0, 0]} yaw={0} />
+                                    </group>
+                                )
+                            )}
                         </Suspense>
                     )
                 })}
@@ -2640,10 +2615,12 @@ function Board3D({
             )}
             {/* Fullscreen 3D property card viewer over a blue background */}
             {openCardId != null && (
-                <PropertyCardModal3D id={openCardId} onClose={() => setOpenCardId(null)} />
+                <PropertyCardModal3D id={openCardId as number} onClose={() => setOpenCardId(null)} />
             )}
         </div>
     )
 }
 
 export default memo(Board3D)
+
+
