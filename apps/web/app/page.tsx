@@ -6,15 +6,12 @@ import type { ServerEvent, ClientEvent, RoomState, Player } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
 import PropertyCard from './components/PropertyCard'
 import DiceRoll from './components/DiceRoll'
-import ActionCardModal3D from './components/ActionCardModal3D'
 import { DevFPS } from './components/dev/DevFeatures'
-import LoadingOverlay from './components/LoadingOverlay'
 import PlacementPanel from './components/dev/PlacementPanel'
 import { ensureDevFlagsAPI, getDevFlag } from './components/dev/devFlags'
 import RoomsList from './components/RoomsList'
 import board from '@shared/board.tr.json'
 import './preload-assets'
-import { Expand, Shrink } from 'lucide-react'
 const NAME_KEY = 'monopoly:name'
 const PLACE_KEY = 'monopoly:placements'
 
@@ -598,62 +595,42 @@ export default function Home() {
     }
   }
 
-  // camera presets (loaded from public/baked-in-content/camera-angles.json)
+  // camera presets (FOV 56)
   const [preset, setPreset] = useState(0)
   const [topDown, setTopDown] = useState(false)
-  const [camCfg, setCamCfg] = useState<{
-    initial?: CameraPreset
-    off?: CameraPreset[]
-    on?: CameraPreset[]
-  } | null>(null)
-  useEffect(() => {
-    let alive = true
-    fetch('/baked-in-content/camera-angles.json')
-      .then(r => r.ok ? r.json() : null)
-      .then((d) => {
-        if (!alive || !d) return
-        const norm = (v: any): CameraPreset | null => {
-          try {
-            const pos: [number, number, number] = [Number(v.pos?.[0]), Number(v.pos?.[1]), Number(v.pos?.[2])]
-            const target: [number, number, number] = Array.isArray(v.target) && v.target.length === 3 ? [Number(v.target[0]), Number(v.target[1]), Number(v.target[2])] : [0, 0, 0]
-            const fov: number = typeof v.fov === 'number' ? v.fov : 56
-            if (pos.some(n => Number.isNaN(n)) || target.some(n => Number.isNaN(n))) return null
-            return { pos, target, fov }
-          } catch { return null }
-        }
-        const mapArr = (arr: any[]): CameraPreset[] => (Array.isArray(arr) ? arr.map(norm).filter(Boolean) as CameraPreset[] : [])
-        const cfg = {
-          initial: norm(d.initial) || undefined,
-          off: mapArr(d.off),
-          on: mapArr(d.on),
-        }
-        setCamCfg(cfg)
-      })
-      .catch(() => { /* ignore */ })
-    return () => { alive = false }
-  }, [])
-
-  const defaultEdgeBase: CameraPreset[] = ([
+  const edgeBase: CameraPreset[] = ([
+    // Edge 1 (parallel to +Z): front side
     { pos: [0.0, 8.5, 10.5], target: [0, 0, 0], fov: 56 },
+    // Edge 4 (parallel to -X): left side
     { pos: [-10.5, 8.5, 0.0], target: [0, 0, 0], fov: 56 },
+    // Edge 3 (parallel to -Z): back side
     { pos: [0.0, 8.5, -10.5], target: [0, 0, 0], fov: 56 },
+    // Edge 2 (parallel to +X): right side
     { pos: [10.5, 8.5, 0.0], target: [0, 0, 0], fov: 56 },
+    // Bird's-eye top-down
+    { pos: [0.0, 16.0, 0.0], target: [0, 0, 0], fov: 36 },
   ])
-  const defaultEdgeTop: CameraPreset[] = ([
+  const edgeTop: CameraPreset[] = ([
+    // Top-down variant for each edge: slightly above center with edge-aligned bias
     { pos: [0.0, 9.76, 0.01], target: [0, 0, 0], fov: 55.91 },
     { pos: [-0.01, 9.76, 0.0], target: [0, 0, 0], fov: 55.91 },
     { pos: [0.0, 9.76, -0.01], target: [0, 0, 0], fov: 55.91 },
     { pos: [0.01, 9.76, 0.0], target: [0, 0, 0], fov: 55.91 },
   ])
-  const edgeBase: CameraPreset[] = useMemo(() => (camCfg?.off && camCfg.off.length >= 4 ? camCfg.off.slice(0, 4) : defaultEdgeBase), [camCfg?.off])
-  const edgeTop: CameraPreset[] = useMemo(() => (camCfg?.on && camCfg.on.length >= 4 ? camCfg.on.slice(0, 4) : defaultEdgeTop), [camCfg?.on])
   const presets: CameraPreset[] = (topDown ? edgeTop : edgeBase)
   const waitingPreset: CameraPreset = useMemo(() => {
-    // Always prefer the baked initial camera for waiting/lobby state.
-    if (camCfg?.initial) return camCfg.initial
-    // Fallback default if JSON not yet loaded
+    try {
+      const raw = localStorage.getItem('monopoly.dev.camera')
+      if (raw) {
+        const d = JSON.parse(raw)
+        const pos: [number, number, number] = Array.isArray(d.pos) && d.pos.length === 3 ? [d.pos[0], d.pos[1], d.pos[2]] : [0, 12, 0]
+        const target: [number, number, number] = Array.isArray(d.target) && d.target.length === 3 ? [d.target[0], d.target[1], d.target[2]] : [0, 0, 0]
+        const fov = typeof d.fov === 'number' ? d.fov : 55.69041415519604
+        return { pos, target, fov }
+      }
+    } catch { }
     return { pos: [0, 12, 0], target: [0, 0, 0], fov: 55.69041415519604 }
-  }, [camCfg?.initial])
+  }, [])
   useEffect(() => { ensureDevFlagsAPI() }, [])
   // Arrow keys: cycle camera presets (1..4) left/right; Up=top-down on, Down=off
   useEffect(() => {
@@ -933,18 +910,13 @@ export default function Home() {
   const isAdmin = !!(state && (state as any).adminId === socket.id)
   const allReady = !!(state && state.order?.every(id => (state as any).ready?.[id]))
   // Turn controls: allow roll if no dice yet, or doubles rolled; allow end turn if rolled and not doubles
-  const cardPending = !!((state as any)?.pendingCard)
-  const canRoll = !!(isMyTurn && !cardPending && (!((state as any)?.lastDice) || ((state as any)?.lastDice?.isDouble === true)))
-  const canEndTurn = !!(isMyTurn && !cardPending && !!((state as any)?.lastDice) && ((state as any)?.lastDice?.isDouble !== true))
-  const [animatingRoute, setAnimatingRoute] = useState(false)
+  const canRoll = !!(isMyTurn && (!((state as any)?.lastDice) || ((state as any)?.lastDice?.isDouble === true)))
+  const canEndTurn = !!(isMyTurn && !!((state as any)?.lastDice) && ((state as any)?.lastDice?.isDouble !== true))
   // If landed on an unowned buyable tile, show only auction instead of end-turn
   const myTile = me?.position
   const showAuction = useMemo(() => {
     try {
       if (!isMyTurn || !canEndTurn) return false
-      // add this line:
-      if (animatingRoute) return false
-
       if (myTile == null) return false
       const sp: any = (board as any).spaces?.[myTile]
       const t = sp?.type
@@ -953,8 +925,7 @@ export default function Home() {
       const hasOwner = Object.values(state?.players || {}).some((pl: any) => (pl?.properties || []).includes(sp.id))
       return !hasOwner
     } catch { return false }
-  }, [isMyTurn, canEndTurn, myTile, state?.players, animatingRoute])  // include animatingRoute in deps
-
+  }, [isMyTurn, canEndTurn, myTile, state?.players])
 
   // --- Buy modal state: shows after a roll when landing on an unowned buyable space ---
   const [buyModal, setBuyModal] = useState<{ tile: number; progress: number } | null>(null)
@@ -968,59 +939,17 @@ export default function Home() {
   const buyModalSeenKey = useRef<string | null>(null)
   const FADE_MS = 220
   const [buyVisible, setBuyVisible] = useState(false)
-  // Additional render gate: delay mounting the overlay for 2000ms
-  const [buyRenderReady, setBuyRenderReady] = useState(false)
   const [animatingMyMove, setAnimatingMyMove] = useState(false)
-  // --- Drawn card modal (3D), same behavior as property card viewer ---
-  const [actionCard, setActionCard] = useState<{ deck: 'chance' | 'community'; index: number; ts: number } | null>(null)
-  useEffect(() => {
-    const p: any = (state as any)?.pendingCard
-    if (!p || typeof p.index !== 'number') return
-    // Only open after my hop animation finishes (for better timing)
-    if (animatingRoute) return
-    setActionCard({ deck: p.deck, index: p.index, ts: p.ts })
-  }, [(state as any)?.pendingCard?.ts, animatingRoute])
-  useEffect(() => {
-    if (!(state as any)?.pendingCard) setActionCard(null)
-  }, [(state as any)?.pendingCard])
   const pendingBuyTileRef = useRef<number | null>(null)
   const pendingBuyTimerRef = useRef<number | null>(null)
   useEffect(() => () => {
     if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
   }, [])
 
-  // Auto-scroll to bottom when the game starts, and snap camera to Off Cam 1
-  const prevStartedRef = useRef<boolean>(false)
-  useEffect(() => {
-    const started = !!state?.started
-    if (started && !prevStartedRef.current) {
-      prevStartedRef.current = true
-      // On game start: ensure top-down is off and select Cam 1 (index 0)
-      try { setTopDown(false); setPreset(0) } catch { }
-      // Smooth scroll to bottom on next frame to ensure layout settled
-      requestAnimationFrame(() => {
-        try {
-          const doc = document.documentElement
-          const maxY = Math.max(doc.scrollHeight, document.body?.scrollHeight || 0)
-          window.scrollTo({ top: maxY, behavior: 'smooth' })
-        } catch { /* noop */ }
-      })
-    }
-    if (!started) prevStartedRef.current = false
-  }, [state?.started])
-
   // When a buy modal mounts, flip visible on next frame so CSS transitions run
   useEffect(() => {
     if (buyModal) requestAnimationFrame(() => setBuyVisible(true))
   }, [buyModal])
-
-  // Delay showing the overlay content by 2000ms after buyModal is set
-  useEffect(() => {
-    if (!buyModal) { setBuyRenderReady(false); return }
-    setBuyRenderReady(false)
-    const id = window.setTimeout(() => setBuyRenderReady(true), 0)
-    return () => { clearTimeout(id) }
-  }, [buyModal?.tile])
 
   function closeBuyModal(after?: () => void) {
     setBuyVisible(false)
@@ -1076,17 +1005,17 @@ export default function Home() {
       // mark this dice result as handled
       buyModalSeenKey.current = key
 
-      // Always set pending tile, and cancel any previously scheduled open
-      pendingBuyTileRef.current = tile
-      if (pendingBuyTimerRef.current) { clearTimeout(pendingBuyTimerRef.current as any); pendingBuyTimerRef.current = null }
-
-      // If currently animating, defer opening until route completes; otherwise, open after a small delay
+      // delay UI if token still animating — remember the tile
       if (animatingMyMove) {
+        pendingBuyTileRef.current = tile
         return
       }
+
+      // no animation — open now but add +100ms
+      if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
       pendingBuyTimerRef.current = window.setTimeout(() => {
         setBuyModal({ tile, progress: 0 })
-      }, 100) as any
+      }, 100)
     } catch { }
   }, [state?.lastDice, isMyTurn, me?.position, state?.players, animatingMyMove])
 
@@ -1167,7 +1096,6 @@ export default function Home() {
             if (!p) return null
             const ready = (state as any).ready?.[pid]
             const isMe = pid === socket.id
-            const tileName = ((board as any)?.spaces?.[p.position]?.name ?? `#${p.position}`)
             return (
               <div key={pid} style={{ padding: 8, border: '1px solid #ddd', borderRadius: 8, width: 260 }}>
                 <b>{p.name}</b> — {p.cash}₺ — Poz: {p.position} {pid === (state as any).adminId && <em>(admin)</em>}
@@ -1188,361 +1116,336 @@ export default function Home() {
 
       {/* 3D board */}
       <div ref={scenePanelRef} style={{ marginTop: 12, position: 'relative' }}>
-        <LoadingOverlay />
         {getDevFlag('showFPSTracker' as any) && (
           <DevFPS />
         )}
         <div className="r3f-toolbar" style={{ display: 'flex', gap: 8, marginBottom: 8, justifyContent: 'center' }}>
-          {state?.started && (<><button onClick={() => setPreset(0)}>Kamera 1</button><button onClick={() => setPreset(1)}>Kamera 2</button><button onClick={() => setPreset(2)}>Kamera 3</button><button onClick={() => setPreset(3)}>Kamera 4</button><button onClick={() => setTopDown(true)}>Kus Bakisi</button></>)}
-          <button onClick={toggleFullscreen} aria-label={isFullscreen ? 'Pencere' : 'Tam Ekran'}>{isFullscreen ? <Shrink size={16} /> : <Expand size={16} />}</button>
+          <button onClick={() => setPreset(0)}>Kamera 1</button>
+          <button onClick={() => setPreset(1)}>Kamera 2</button>
+          <button onClick={() => setPreset(2)}>Kamera 3</button>
+          <button onClick={() => setPreset(3)}>Kamera 4</button><button onClick={() => setTopDown(true)}>Kuş Bakışı</button>
+          <button onClick={toggleFullscreen}>{isFullscreen ? 'Pencere' : 'Tam Ekran'}</button>
         </div>
+        {!getDevFlag('disable3D') && (
+          <>
+            <Board3D
+              players={effectivePlayers}
+              order={effectiveOrder}
+              boardImageUrl="/board.png"
 
+              models={tokenModels}
 
+              worldSize={10}
+              outfill={0.08}
+              boardThickness={0.3}
+              rimHeight={0.05}
+              rimColor="#000"
+              lighting={{ ambient: 0.3, hemi: 0.2, key: 0.85, fill: 0.4, exposure: 1.0, background: '#7d917a' }}
 
+              presets={presets}
+              presetIndex={preset}
+              waitingMode={!!(state && !state.started)}
+              waitingPreset={waitingPreset}
+              cameraLerp={0.025}
 
-        <>
-          <Board3D
-            players={effectivePlayers}
-            order={effectiveOrder}
-            boardImageUrl="/board.png"
+              placementOverrides={placements}
 
-            models={tokenModels}
+              indexRotation={270}
+              pathDirection="counterclockwise"
+              displayOffset={0}
 
-            worldSize={10}
-            outfill={0.08}
-            boardThickness={0.3}
-            rimHeight={0.05}
-            rimColor="#000"
-            lighting={{ ambient: 0.3, hemi: 0.2, key: 0.85, fill: 0.4, exposure: 1.0, background: '#7d917a' }}
-
-            presets={presets}
-            presetIndex={preset}
-            waitingMode={!(state?.started)}
-            waitingPreset={waitingPreset}
-            cameraLerp={0.025}
-
-            placementOverrides={placements}
-
-            indexRotation={270}
-            pathDirection="counterclockwise"
-            displayOffset={0}
-
-
-
-            routeCompleteDelayMs={1000}
-            onTokenRouteStart={(pid) => {
-              if (pid === socket.id) {
-                setAnimatingRoute(true);
-                setAnimatingMyMove(true);           // ← add this
-              }
-            }}
-            onTokenRouteComplete={(pid) => {
-              if (pid === socket.id) {
-                setAnimatingRoute(false);
-                setAnimatingMyMove(false);          // ← add this
-
-                // If we deferred opening the modal during the hop, open it now (+100ms)
-                const t = pendingBuyTileRef.current;
-                if (t != null) {
-                  pendingBuyTileRef.current = null;
-                  if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current as any);
-                  pendingBuyTimerRef.current = window.setTimeout(() => {
-                    setBuyModal({ tile: t, progress: 0 });
-                  }, 100);
+              onTokenRouteStart={(pid) => { if (pid === socket.id) setAnimatingMyMove(true) }}
+              onTokenRouteComplete={(pid) => {
+                if (pid === socket.id) {
+                  setAnimatingMyMove(false)
+                  if (pendingBuyTileRef.current != null) {
+                    if (pendingBuyTimerRef.current) clearTimeout(pendingBuyTimerRef.current)
+                    pendingBuyTimerRef.current = window.setTimeout(() => {
+                      const t = pendingBuyTileRef.current
+                      pendingBuyTileRef.current = null
+                      if (t != null) setBuyModal({ tile: t, progress: 0 })
+                    }, 100) // +100ms after animation
+                  }
                 }
-              }
-            }}
+              }}
 
-            showLabels={false}
-            showFallbackSpheres={true}
-          >
-            {/* Action card modal overlay (outside of Canvas), shown over scene like property cards */}
-            {state?.lastDice && !getDevFlag('disableDice') && (
-              <Suspense fallback={null}
-              >
-                <DiceRoll
-                  key={`dice-${state.lastDice.d1}-${state.lastDice.d2}-${rollTick}`}
-                  d1={state.lastDice.d1}
-                  d2={state.lastDice.d2}
-                  position={[0, 0, 0]}
-                  scale={6.5}
-                  rotation={diceRotation}
-                  trigger={rollTick}
-                  mode={isMyTurn ? 'roller' : 'spectator'}
-                  castShadows={!getDevFlag('disableDiceShadows')}
-                  onFinished={() => { /* hook if needed */ }}
-                />
-              </Suspense>
-            )}
-          </Board3D>
-          {actionCard && (
-            <ActionCardModal3D
-              frontUrl={actionCard.deck === 'chance'
-                ? `/kamuFonuVeSans/sans${actionCard.index}.png`
-                : `/kamuFonuVeSans/kamufonu${actionCard.index}.png`}
-              backUrl={actionCard.deck === 'chance'
-                ? `/kamuFonuVeSans/sansB.png`
-                : `/kamuFonuVeSans/kamuFonuB.png`}
-              onClose={() => setActionCard(null)}
-              onContinue={() => { send({ type: 'continueCard' } as any) }}
-              canContinue={((state as any)?.pendingCard?.playerId === socket.id)}
-            />
-          )}
-          {isMyTurn && !animatingRoute && (
-            <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)' }}>
-                {canRoll && (
-                  <button className="btn" onClick={handleRollClick}>Zar At</button>
-                )}
-                {showAuction ? null : (
-                  canEndTurn ? (
-                    <button className="btn" onClick={() => send({ type: 'endTurn' } as any)}>Sırayı Bitir</button>
-                  ) : null
-                )}
+              showLabels={false}
+              showFallbackSpheres={true}
+            >
+              {state?.lastDice && !getDevFlag('disableDice') && (
+                <Suspense fallback={null}
+                >
+                  <DiceRoll
+                    key={`dice-${state.lastDice.d1}-${state.lastDice.d2}-${rollTick}`}
+                    d1={state.lastDice.d1}
+                    d2={state.lastDice.d2}
+                    position={[0, 0, 0]}
+                    scale={6.5}
+                    rotation={diceRotation}
+                    trigger={rollTick}
+                    mode={isMyTurn ? 'roller' : 'spectator'}
+                    castShadows={!getDevFlag('disableDiceShadows')}
+                    onFinished={() => { /* hook if needed */ }}
+                  />
+                </Suspense>
+              )}
+            </Board3D>
+            {isMyTurn && (
+              <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)' }}>
+                  {canRoll && (
+                    <button className="btn" onClick={handleRollClick}>Zar At</button>
+                  )}
+                  {showAuction ? null : (
+                    canEndTurn ? (
+                      <button className="btn" onClick={() => send({ type: 'endTurn' } as any)}>Sırayı Bitir</button>
+                    ) : null
+                  )}
 
+                </div>
               </div>
-            </div>
-          )}
-          {/* Buy modal overlay — modern card */}
-          {buyModal && buyRenderReady && !animatingMyMove && (() => {
-            const sp: any = (board as any).spaces?.[buyModal.tile]
-            if (!sp) return null
+            )}
+            {/* Buy modal overlay — modern card */}
+            {buyModal && (() => {
+              const sp: any = (board as any).spaces?.[buyModal.tile]
+              if (!sp) return null
 
-            // Accent color from explicit tile mapping; fallback per type
-            const tileId = buyModal.tile
-            const accent =
-              BUY_ACCENT_BY_TILE[tileId] ??
-              (sp?.type === 'STATION'
-                ? '#0F0F0F'
-                : sp?.type === 'UTILITY'
-                  ? '#98A496'
-                  : '#6366f1')
-
-
-            const price = Number(sp?.price || 0)
-            const playerCash = me?.cash ?? 0
-            const canBuyNow = playerCash >= price
-
-            // Circular timer: same green → red color as the linear bar
-            const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1 → 0
-            const secondsLeft = Math.ceil(remaining * 30)
-            const angle = Math.round(remaining * 360) // arc length
-            const hue = Math.round(120 * remaining)   // 120 (green) → 0 (red)
-            const ringColor = `hsl(${hue} 80% 48%)`
-            const ringBg = `conic-gradient(${ringColor} ${angle}deg, rgba(255,255,255,0.15) 0deg)`
+              // Accent color from explicit tile mapping; fallback per type
+              const tileId = buyModal.tile
+              const accent =
+                BUY_ACCENT_BY_TILE[tileId] ??
+                (sp?.type === 'STATION'
+                  ? '#0F0F0F'
+                  : sp?.type === 'UTILITY'
+                    ? '#98A496'
+                    : '#6366f1')
 
 
-            const doBuy = () => closeBuyModal(() => send({ type: 'buy' } as any))
-            const doAuction = () => closeBuyModal(() => send({ type: 'decline' } as any))
+              const price = Number(sp?.price || 0)
+              const playerCash = me?.cash ?? 0
+              const canBuyNow = playerCash >= price
 
-            const glass = 'rgba(17,24,39,0.60)' // slate-900 @60%
-            const border = '1px solid rgba(255,255,255,0.14)'
+              // Circular timer: same green → red color as the linear bar
+              const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1 → 0
+              const secondsLeft = Math.ceil(remaining * 30)
+              const angle = Math.round(remaining * 360) // arc length
+              const hue = Math.round(120 * remaining)   // 120 (green) → 0 (red)
+              const ringColor = `hsl(${hue} 80% 48%)`
+              const ringBg = `conic-gradient(${ringColor} ${angle}deg, rgba(255,255,255,0.15) 0deg)`
 
-            const solidBtn = (enabled: boolean): React.CSSProperties => ({
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 12,
-              border: '1px solid rgba(255,255,255,0.14)',
-              background: enabled
-                ? `linear-gradient(135deg, ${accent}, rgba(255,255,255,0.07) 70%)`
-                : 'rgba(255,255,255,0.08)',
-              color: '#fff',
-              fontWeight: 800,
-              letterSpacing: 0.2,
-              cursor: enabled ? 'pointer' : 'not-allowed',
-              boxShadow: enabled ? '0 6px 24px rgba(0,0,0,0.35)' : 'none',
-              transition: 'transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease',
-              opacity: enabled ? 1 : 0.65
-            })
 
-            const ghostBtn: React.CSSProperties = {
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 12,
-              border: '1px solid rgba(255,255,255,0.14)',
-              background: 'rgba(255,255,255,0.06)',
-              color: '#fff',
-              fontWeight: 800,
-              letterSpacing: 0.2,
-              cursor: 'pointer',
-              transition: 'transform 120ms ease, box-shadow 120ms ease',
-            }
+              const doBuy = () => closeBuyModal(() => send({ type: 'buy' } as any))
+              const doAuction = () => closeBuyModal(() => send({ type: 'decline' } as any))
 
-            return (
-              // NEW overlay that fills the 3D panel and centers the card
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  zIndex: 60,
-                  display: 'grid',
-                  placeItems: 'center',
-                  pointerEvents: 'none', // ← let the 3D canvas keep receiving input outside the card
-                }}
-              >
-                {/* Your card stays the same, but add pointerEvents:'auto' so it’s clickable */}
+              const glass = 'rgba(17,24,39,0.60)' // slate-900 @60%
+              const border = '1px solid rgba(255,255,255,0.14)'
+
+              const solidBtn = (enabled: boolean): React.CSSProperties => ({
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.14)',
+                background: enabled
+                  ? `linear-gradient(135deg, ${accent}, rgba(255,255,255,0.07) 70%)`
+                  : 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                fontWeight: 800,
+                letterSpacing: 0.2,
+                cursor: enabled ? 'pointer' : 'not-allowed',
+                boxShadow: enabled ? '0 6px 24px rgba(0,0,0,0.35)' : 'none',
+                transition: 'transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease',
+                opacity: enabled ? 1 : 0.65
+              })
+
+              const ghostBtn: React.CSSProperties = {
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.14)',
+                background: 'rgba(255,255,255,0.06)',
+                color: '#fff',
+                fontWeight: 800,
+                letterSpacing: 0.2,
+                cursor: 'pointer',
+                transition: 'transform 120ms ease, box-shadow 120ms ease',
+              }
+
+              return (
+                // NEW overlay that fills the 3D panel and centers the card
                 <div
-                  onWheel={forwardWheelToCanvas}
                   style={{
-                    width: 380,
-                    borderRadius: 16,
-                    overflow: 'hidden',
-                    color: '#fff',
-                    background: 'rgba(17,24,39,0.60)',
-                    border: '1px solid rgba(255,255,255,0.14)',
-                    boxShadow: '0 10px 42px rgba(0,0,0,0.35)',
-                    pointerEvents: 'auto', // ← important
-                    opacity: buyVisible ? 1 : 0,
-                    transform: buyVisible ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.98)',
-                    transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
-                    willChange: 'opacity, transform',
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 60,
+                    display: 'grid',
+                    placeItems: 'center',
+                    pointerEvents: 'none', // ← let the 3D canvas keep receiving input outside the card
                   }}
                 >
-
-
+                  {/* Your card stays the same, but add pointerEvents:'auto' so it’s clickable */}
                   <div
+                    onWheel={forwardWheelToCanvas}
                     style={{
                       width: 380,
                       borderRadius: 16,
                       overflow: 'hidden',
                       color: '#fff',
-                      background: glass,
-                      border,
+                      background: 'rgba(17,24,39,0.60)',
+                      border: '1px solid rgba(255,255,255,0.14)',
                       boxShadow: '0 10px 42px rgba(0,0,0,0.35)',
-                      backdropFilter: getDevFlag('disableBackdropBlur' as any) ? 'none' : 'blur(10px)'
+                      pointerEvents: 'auto', // ← important
+                      opacity: buyVisible ? 1 : 0,
+                      transform: buyVisible ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.98)',
+                      transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
+                      willChange: 'opacity, transform',
                     }}
                   >
-                    {/* Header */}
+
+
                     <div
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: 12,
-                        background: `linear-gradient(90deg, ${accent} 0%, rgba(255,255,255,0.10) 100%)`,
-                        borderBottom: '1px solid rgba(255,255,255,0.14)'
+                        width: 380,
+                        borderRadius: 16,
+                        overflow: 'hidden',
+                        color: '#fff',
+                        background: glass,
+                        border,
+                        boxShadow: '0 10px 42px rgba(0,0,0,0.35)',
+                        backdropFilter: getDevFlag('disableBackdropBlur' as any) ? 'none' : 'blur(10px)'
                       }}
                     >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 900, fontSize: 16, lineHeight: '20px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                          {sp.name}
-                        </div>
-                        <div style={{ opacity: 0.85, fontSize: 12 }}>
-                          {sp.type === 'PROPERTY' ? 'Mülk' : sp.type === 'STATION' ? 'İstasyon' : sp.type === 'UTILITY' ? 'Kamu Hizmeti' : 'Satın alınabilir'}
-                        </div>
-                      </div>
-                      {/* radial countdown */}
+                      {/* Header */}
                       <div
                         style={{
-                          width: 50,
-                          height: 50,
-                          borderRadius: '9999px',
-                          background: ringBg,
-                          display: 'grid',
-                          placeItems: 'center',
-                          willChange: 'background'
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: 12,
+                          background: `linear-gradient(90deg, ${accent} 0%, rgba(255,255,255,0.10) 100%)`,
+                          borderBottom: '1px solid rgba(255,255,255,0.14)'
                         }}
                       >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 900, fontSize: 16, lineHeight: '20px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                            {sp.name}
+                          </div>
+                          <div style={{ opacity: 0.85, fontSize: 12 }}>
+                            {sp.type === 'PROPERTY' ? 'Mülk' : sp.type === 'STATION' ? 'İstasyon' : sp.type === 'UTILITY' ? 'Kamu Hizmeti' : 'Satın alınabilir'}
+                          </div>
+                        </div>
+                        {/* radial countdown */}
                         <div
                           style={{
-                            width: 40,
-                            height: 40,
+                            width: 50,
+                            height: 50,
                             borderRadius: '9999px',
-                            background: 'rgba(0,0,0,0.55)',
+                            background: ringBg,
                             display: 'grid',
                             placeItems: 'center',
-                            fontWeight: 900,
-                            fontSize: 12,
-                            boxShadow: `0 0 0 2px ${ringColor}22 inset`
+                            willChange: 'background'
                           }}
                         >
-                          {secondsLeft}s
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: '9999px',
+                              background: 'rgba(0,0,0,0.55)',
+                              display: 'grid',
+                              placeItems: 'center',
+                              fontWeight: 900,
+                              fontSize: 12,
+                              boxShadow: `0 0 0 2px ${ringColor}22 inset`
+                            }}
+                          >
+                            {secondsLeft}s
+                          </div>
                         </div>
+
                       </div>
 
-                    </div>
-
-                    {/* Body */}
-                    <div style={{ display: 'flex', gap: 12, padding: 12 }}>
-                      <div style={{ flex: '0 0 auto' }}>
-                        <PropertyCard id={buyModal.tile} side={'f'} width={140} />
-                      </div>
-                      <div style={{ flex: 1, display: 'grid', gap: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                          <span style={{ opacity: 0.9 }}>Fiyat</span>
-                          <span style={{ fontWeight: 800 }}>{price}₺</span>
+                      {/* Body */}
+                      <div style={{ display: 'flex', gap: 12, padding: 12 }}>
+                        <div style={{ flex: '0 0 auto' }}>
+                          <PropertyCard id={buyModal.tile} side={'f'} width={140} />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                          <span style={{ opacity: 0.9 }}>Cüzdanın</span>
-                          <span style={{ fontWeight: 800, color: canBuyNow ? '#34d399' : '#f87171' }}>{playerCash}₺</span>
+                        <div style={{ flex: 1, display: 'grid', gap: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                            <span style={{ opacity: 0.9 }}>Fiyat</span>
+                            <span style={{ fontWeight: 800 }}>{price}₺</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                            <span style={{ opacity: 0.9 }}>Cüzdanın</span>
+                            <span style={{ fontWeight: 800, color: canBuyNow ? '#34d399' : '#f87171' }}>{playerCash}₺</span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                            <button
+                              className="btn"
+                              onClick={doBuy}
+                            >
+                              Satın Al
+                            </button>
+                            <button
+                              className="btn"
+                              onClick={doAuction}
+                              style={ghostBtn}
+                              onMouseDown={(e) => (e.currentTarget.style.transform = 'translateY(1px)')}
+                              onMouseUp={(e) => (e.currentTarget.style.transform = '')}
+                            >
+                              Açık Arttırma
+                            </button>
+                          </div>
+
+                          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                            {canBuyNow ? 'Satın almak için tıkla' : 'Yetersiz bakiye'} • Açık arttırma ile herkese şans ver
+                          </div>
+
+                          {/* Countdown bar: full → 0 with smooth transform and solid color shift */}
+                          {(() => {
+                            const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1→0
+                            const hue = Math.round(120 * remaining) // 120=green → 0=red
+                            const barColor = `hsl(${hue} 80% 48%)`
+
+                            const track: React.CSSProperties = {
+                              position: 'relative',
+                              height: 8,
+                              background: 'rgba(255,255,255,0.10)',
+                              borderRadius: 6,
+                              overflow: 'hidden',
+                              marginTop: 2,
+                              border: '1px solid rgba(255,255,255,0.08)'
+                            }
+
+                            const fill: React.CSSProperties = {
+                              position: 'absolute',
+                              inset: 0,                  // full size; we scale it
+                              background: barColor,      // solid color (no gradient)
+                              transform: `scaleX(${remaining})`,
+                              transformOrigin: 'left center',
+                              transition: 'transform 180ms cubic-bezier(0.22,1,0.36,1), background-color 140ms linear',
+                              willChange: 'transform',
+                              backfaceVisibility: 'hidden'
+                            }
+
+                            return (
+                              <div style={track} aria-label="Kalan süre">
+                                <div style={fill} />
+                              </div>
+                            )
+                          })()}
+
+
                         </div>
-
-                        <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                          <button
-                            className="btn"
-                            onClick={doBuy}
-                          >
-                            Satın Al
-                          </button>
-                          <button
-                            className="btn"
-                            onClick={doAuction}
-                            style={ghostBtn}
-                            onMouseDown={(e) => (e.currentTarget.style.transform = 'translateY(1px)')}
-                            onMouseUp={(e) => (e.currentTarget.style.transform = '')}
-                          >
-                            Açık Arttırma
-                          </button>
-                        </div>
-
-                        <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
-                          {canBuyNow ? 'Satın almak için tıkla' : 'Yetersiz bakiye'} • Açık arttırma ile herkese şans ver
-                        </div>
-
-                        {/* Countdown bar: full → 0 with smooth transform and solid color shift */}
-                        {(() => {
-                          const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1→0
-                          const hue = Math.round(120 * remaining) // 120=green → 0=red
-                          const barColor = `hsl(${hue} 80% 48%)`
-
-                          const track: React.CSSProperties = {
-                            position: 'relative',
-                            height: 8,
-                            background: 'rgba(255,255,255,0.10)',
-                            borderRadius: 6,
-                            overflow: 'hidden',
-                            marginTop: 2,
-                            border: '1px solid rgba(255,255,255,0.08)'
-                          }
-
-                          const fill: React.CSSProperties = {
-                            position: 'absolute',
-                            inset: 0,                  // full size; we scale it
-                            background: barColor,      // solid color (no gradient)
-                            transform: `scaleX(${remaining})`,
-                            transformOrigin: 'left center',
-                            transition: 'transform 180ms cubic-bezier(0.22,1,0.36,1), background-color 140ms linear',
-                            willChange: 'transform',
-                            backfaceVisibility: 'hidden'
-                          }
-
-                          return (
-                            <div style={track} aria-label="Kalan süre">
-                              <div style={fill} />
-                            </div>
-                          )
-                        })()}
-
-
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )
-          })()}
-        </>
+              )
+            })()}
+          </>
         )
+        }
         {/* Optional property card overlay for current tile (dev toggle) */}
         {getDevFlag('showPropertyCard' as any) && (() => {
           const tile = me?.position ?? null
@@ -1599,7 +1502,29 @@ export default function Home() {
         )}
       </div>
       {/* Legacy game action buttons removed for order-based flow */}
-    </main>
+    </main >
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
