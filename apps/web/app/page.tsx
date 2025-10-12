@@ -998,6 +998,16 @@ export default function Home() {
   // Additional render gate: delay mounting the overlay for 2000ms
   const [buyRenderReady, setBuyRenderReady] = useState(false)
   const [animatingMyMove, setAnimatingMyMove] = useState(false)
+  // Track any player's hop for gating overlays for all viewers
+  const [anyAnimatingRoute, setAnyAnimatingRoute] = useState(false)
+  useEffect(() => {
+    const handler = (e: any) => {
+      try { setAnyAnimatingRoute(!!(e?.detail?.active ?? (window as any)?.MonopolyRouteActive)) } catch { setAnyAnimatingRoute(false) }
+    }
+    handler(null as any)
+    window.addEventListener('monopoly:routeActive', handler as any)
+    return () => window.removeEventListener('monopoly:routeActive', handler as any)
+  }, [])
   const pendingBuyTileRef = useRef<number | null>(null)
   const pendingBuyTimerRef = useRef<number | null>(null)
   useEffect(() => () => {
@@ -1390,8 +1400,8 @@ export default function Home() {
             </Board3D>
             {/* Money animations overlay */}
             <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
-            {/* Pending action card: show modal with Devam Et (Continue) */}
-            {pendingCard && (() => {
+            {/* Pending action card: show after any hop completes */}
+            {pendingCard && !anyAnimatingRoute && (() => {
               try {
                 const deck = String(pendingCard.deck || '')
                 const idx = Number(pendingCard.index || 0)
@@ -1745,7 +1755,6 @@ export default function Home() {
     </main >
   )
 }
-
 
 
 

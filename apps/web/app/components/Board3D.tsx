@@ -1561,6 +1561,20 @@ function Board3D({
     const currentHopTileRef = useRef<Record<string, number>>({})
     const routePhaseRef = useRef<Record<string, number>>({})
     const routeFlashRef = useRef<Record<string, { tile: number; until: number; duration: number }>>({})
+    // Global route-activity signal for spectators/UI overlays
+    const globalRouteActiveRef = useRef<boolean>(false)
+    const setGlobalRouteActive = () => {
+        try {
+            const active = (movingRef.current.size > 0)
+            if (globalRouteActiveRef.current !== active) {
+                globalRouteActiveRef.current = active
+                ;(window as any).MonopolyRouteActive = active
+                window.dispatchEvent(new CustomEvent('monopoly:routeActive', { detail: { active } }))
+            } else {
+                ;(window as any).MonopolyRouteActive = active
+            }
+        } catch { }
+    }
     // Defer route-start callbacks to after commit to avoid setState during render
     const pendingStartRef = useRef<Set<string>>(new Set())
     useEffect(() => {
@@ -1570,6 +1584,7 @@ function Board3D({
             try {
                 for (const id of ids) {
                     movingRef.current.add(id)
+                    setGlobalRouteActive()
                     onTokenRouteStart?.(id)
                 }
             } catch { }
@@ -2543,12 +2558,13 @@ function Board3D({
                                         hopHeight={0.40}
                                         lastStepScale={2}
                                         lastHopScale={2}
-                                        onStart={() => { try { movingRef.current.add(p.id); onTokenRouteStart?.(p.id) } catch { } }}
+                                        onStart={() => { try { movingRef.current.add(p.id); setGlobalRouteActive(); onTokenRouteStart?.(p.id) } catch { } }}
                                         onDone={() => {
                                             try {
                                                 // Commit final tile and clear moving flag
                                                 prevTileRef.current[p.id] = tileIndex;
                                                 movingRef.current.delete(p.id);
+                                                setGlobalRouteActive();
                                                 // Clear cached route so future moves can rebuild fresh timing/state
                                                 routeCacheRef.current[p.id] = [];
                                                 delete hopStepsRef.current[p.id];
@@ -2624,4 +2640,3 @@ function Board3D({
 }
 
 export default memo(Board3D)
-
