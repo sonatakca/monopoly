@@ -11,6 +11,7 @@ type Props = {
   orderIndex?: number
   isCurrent?: boolean
   activityKey?: number | string
+  isFullscreen?: boolean
 }
 
 function Money({ value }: { value: number }) {
@@ -23,7 +24,7 @@ function Money({ value }: { value: number }) {
   )
 }
 
-export default function PlayerCard({ player, orderIndex = 0, isCurrent = false, activityKey }: Props) {
+export default function PlayerCard({ player, orderIndex = 0, isCurrent = false, activityKey, isFullscreen }: Props) {
   const owned = useMemo(() => new Set<number>(player.properties || []), [player.properties])
   const dot = PLAYER_DOTS[(orderIndex || 0) % PLAYER_DOTS.length]
   const dim = !!player.bankrupt
@@ -111,11 +112,44 @@ export default function PlayerCard({ player, orderIndex = 0, isCurrent = false, 
   const stationCount = useMemo(() => stationIds.filter((id: number) => owned.has(id)).length, [stationIds, owned])
   const utilCount = useMemo(() => utilIds.filter((id: number) => owned.has(id)).length, [utilIds, owned])
 
+
+
+  function useFullscreen(override?: boolean) {
+    const [full, setFull] = React.useState<boolean>(!!override)
+
+    React.useEffect(() => {
+      if (typeof override === 'boolean') { setFull(override); return }
+      if (typeof document === 'undefined') return
+
+      const getIsFull = () => {
+        const d: any = document
+        return !!(d.fullscreenElement || d.webkitFullscreenElement || d.msFullscreenElement)
+      }
+      const onChange = () => setFull(getIsFull())
+
+      onChange() // init
+      document.addEventListener('fullscreenchange', onChange)
+      document.addEventListener('webkitfullscreenchange', onChange as any)
+      document.addEventListener('msfullscreenchange', onChange as any)
+      return () => {
+        document.removeEventListener('fullscreenchange', onChange)
+        document.removeEventListener('webkitfullscreenchange', onChange as any)
+        document.removeEventListener('msfullscreenchange', onChange as any)
+      }
+    }, [override])
+
+    return full
+  }
+  const full = useFullscreen(isFullscreen)
+
   const frame: React.CSSProperties = {
     width: '100%',
     position: 'relative',
     padding: 8,
     paddingTop: isCurrent ? 20 : 8,
+    // Scale smaller in windowed mode; full size in fullscreen
+    scale: full ? '1' : '0.8',
+    transformOrigin: 'bottom center',
     borderRadius: 14,
     border: '1px solid rgba(255,255,255,0.14)',
     background: 'linear-gradient(180deg, rgba(17,24,39,0.55) 0%, rgba(15,23,42,0.48) 100%)',

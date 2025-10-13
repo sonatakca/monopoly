@@ -8,6 +8,8 @@ import PropertyCard from './components/PropertyCard'
 import DiceRoll from './components/DiceRoll'
 import DiceSlots from './components/DiceSlots'
 import ActionCardModal3D from './components/ActionCardModal3D'
+
+import AuctionOverlay from './components/AuctionOverlay'
 import { DevFPS } from './components/dev/DevFeatures'
 import PlacementPanel from './components/dev/PlacementPanel'
 import LoadingOverlay from './components/LoadingOverlay'
@@ -844,6 +846,9 @@ export default function Home() {
   // dice animation trigger & url selection based on server dice outcome
   const [rollTick, setRollTick] = useState(0)
   const [dicePlaying, setDicePlaying] = useState(false)
+  const [auctionGraceActive, setAuctionGraceActive] = useState(false)
+  const lastAuctionActiveRef = useRef<boolean>(false)
+  const auctionGraceTimerRef = useRef<number | null>(null)
   const [suppressButtons, setSuppressButtons] = useState(false)
   const suppressTimerRef = useRef<number | null>(null)
   function armSuppress(ms: number) {
@@ -884,6 +889,22 @@ export default function Home() {
       setDicePlaying(true)
     }
   }, [state?.lastDice])
+  // Hold auction overlay visibility and button suppression for +2s after server finishes
+  useEffect(() => {
+    const active = !!((state as any)?.auction?.active)
+    try { if (auctionGraceTimerRef.current) window.clearTimeout(auctionGraceTimerRef.current) } catch { }
+    if (active) {
+      setAuctionGraceActive(true)
+    } else {
+      if (lastAuctionActiveRef.current) {
+        setAuctionGraceActive(true)
+        auctionGraceTimerRef.current = window.setTimeout(() => setAuctionGraceActive(false), 2500) as any
+      } else {
+        setAuctionGraceActive(false)
+      }
+    }
+    lastAuctionActiveRef.current = active
+  }, [(state as any)?.auction?.active])
 
   function handleRollClick() {
     // Trigger server roll; mark local pending so we also replay if same pair repeats
@@ -1024,8 +1045,8 @@ export default function Home() {
   }, [state?.pendingVisit, state?.players])
   const showControls = useMemo(() => {
     const suppress = localRollPending.current || dicePlaying || anyAnimatingRoute || suppressButtons
-    return !!(isMyTurn && !animatingRoute && !suppress && (canRoll || canEndTurn) && !buyModal && !pendingCard)
-  }, [isMyTurn, animatingRoute, canRoll, canEndTurn, buyModal, pendingCard, anyAnimatingRoute, dicePlaying, suppressButtons])
+    return !!(isMyTurn && !animatingRoute && !suppress && (canRoll || canEndTurn) && !buyModal && !pendingCard && !(state as any)?.auction?.active)
+  }, [isMyTurn, animatingRoute, canRoll, canEndTurn, buyModal, pendingCard, anyAnimatingRoute, dicePlaying, suppressButtons, (state as any)?.auction?.active])
   const buyTimerRef = useRef<number | null>(null)
   function stopBuyTimer() {
     if (buyTimerRef.current != null) {
@@ -1441,6 +1462,8 @@ export default function Home() {
             </Board3D>
             {/* Money animations overlay */}
             <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
+            {/* Auction overlay */}
+            <AuctionOverlay state={state as any} meId={socket?.id || null} accentColor={currentAccent} send={send} isFullscreen={isFullscreen} />
             {/* Pending action card: show after any hop completes */}
             {pendingCard && !anyAnimatingRoute && (() => {
               try {
@@ -1466,7 +1489,7 @@ export default function Home() {
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 240ms ease' }}>
                 <GameButtons
                   canRoll={!!canRoll && isMyTurn && !animatingRoute}
-                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute}
+                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute && !auctionGraceActive}
                   showAuction={!!showAuction}
                   onRoll={handleRollClick}
                   onEndTurn={() => send({ type: 'endTurn' } as any)}
@@ -1796,6 +1819,20 @@ export default function Home() {
     </main >
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

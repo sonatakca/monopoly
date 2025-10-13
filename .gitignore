@@ -32,3 +32,4 @@ packages/shared/*.d.ts.map
 packages/shared/*.js.map
 
 *.show
+CON

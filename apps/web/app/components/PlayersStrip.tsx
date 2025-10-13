@@ -10,11 +10,41 @@ type Props = {
   style?: React.CSSProperties
   activityKey?: number | string
   onCardRectsChange?: (map: Record<string, DOMRect>) => void
+  isFullscreen?: boolean
 }
 
-export default function PlayersStrip({ players, order, currentId, style, activityKey, onCardRectsChange }: Props) {
+function useFullscreen(override?: boolean) {
+  const [full, setFull] = React.useState<boolean>(!!override)
+
+  React.useEffect(() => {
+    if (typeof override === 'boolean') { setFull(override); return }
+    if (typeof document === 'undefined') return
+
+    const getIsFull = () => {
+      const d: any = document
+      return !!(d.fullscreenElement || d.webkitFullscreenElement || d.msFullscreenElement)
+    }
+    const onChange = () => setFull(getIsFull())
+
+    onChange() // init
+    document.addEventListener('fullscreenchange', onChange)
+    document.addEventListener('webkitfullscreenchange', onChange as any)
+    document.addEventListener('msfullscreenchange', onChange as any)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('webkitfullscreenchange', onChange as any)
+      document.removeEventListener('msfullscreenchange', onChange as any)
+    }
+  }, [override])
+
+  return full
+}
+
+
+export default function PlayersStrip({ players, order, currentId, style, activityKey, onCardRectsChange, isFullscreen }: Props) {
   const list = useMemo(() => order.map(id => players[id]).filter(Boolean), [players, order])
   // 8 slots across the bottom; center the players within those slots
+  const full = useFullscreen(isFullscreen)
   const SLOTS = 8
   const offset = Math.max(0, Math.floor((SLOTS - list.length) / 2))
   const cells: (typeof list[number] | null)[] = Array.from({ length: SLOTS }, () => null)
@@ -24,7 +54,7 @@ export default function PlayersStrip({ players, order, currentId, style, activit
     display: 'grid',
     gridTemplateColumns: `repeat(${SLOTS}, 1fr)`,
     alignItems: 'end',
-    gap: 6,
+    gap: full ? 6 : 0,
     width: '100%',
   }
   const cell: React.CSSProperties = { display: 'flex', justifyContent: 'center', alignItems: 'end' }
@@ -41,6 +71,7 @@ export default function PlayersStrip({ players, order, currentId, style, activit
       const rect = (child && child.getBoundingClientRect) ? child.getBoundingClientRect() : el.getBoundingClientRect()
       map[p.id] = rect
     })
+
     // Only call when rects meaningfully change
     const prev = lastMapRef.current
     let changed = false
@@ -93,6 +124,7 @@ export default function PlayersStrip({ players, order, currentId, style, activit
               orderIndex={i}
               isCurrent={currentId ? p.id === currentId : false}
               activityKey={currentId && p.id === currentId ? activityKey : undefined}
+              isFullscreen={isFullscreen}
             />
           ) : null}
         </div>

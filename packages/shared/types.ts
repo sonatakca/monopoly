@@ -149,3 +149,4 @@ export type ServerEvent =
   | { type: 'state'; state: RoomState }
   | { type: 'msg'; text: string }
   | { type: 'error'; text: string }
+

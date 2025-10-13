@@ -510,6 +510,58 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
     out.push({ type:'state', state }); return out
   }
 
+  // Finalize auction (not gated by current turn)
+  if (evt.type === 'finalizeAuction') {
+    const a = state.auction
+    if (!a.active) return [...out, { type:'state', state }]
+    if (a.spaceId == null) {
+      state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+      return [...out, { type:'state', state }]
+    }
+    if (!a.highestBidder || a.highestBid <= 0) {
+      log.push('İhale sona erdi: teklif yok.')
+      state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+      out.push({ type:'state', state }); return out
+    }
+    const winner = (state as any).players[a.highestBidder]
+    const space = board.spaces[a.spaceId]
+    if (winner && winner.cash >= a.highestBid) {
+      winner.cash -= a.highestBid
+      winner.properties.push(space.id)
+      log.push(`${winner.name} ihaleyi kazandı: ${space.name} (${a.highestBid}₺)`) 
+    } else {
+      log.push('Kazanan teklifçinin bakiyesi yetersiz; ihale iptal.')
+    }
+    state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+    for (const m of log) out.push({ type:'msg', text:m })
+    out.push({ type:'state', state }); return out
+  }
+
+
+  // Finalize auction can be triggered by any client; not gated by current turn
+  if (evt.type === 'finalizeAuction') {
+    const a = state.auction
+    if (!a.active) return [...out, { type:'state', state }]
+    if (a.spaceId == null) { state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }; return [...out, { type:'state', state }] }
+    if (!a.highestBidder || a.highestBid <= 0) {
+      log.push('İhale sona erdi: teklif yok.')
+      state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+      out.push({ type:'state', state }); return out
+    }
+    const winner = (state as any).players[a.highestBidder]
+    const space = board.spaces[a.spaceId]
+    if (winner && winner.cash >= a.highestBid) {
+      winner.cash -= a.highestBid
+      winner.properties.push(space.id)
+      log.push(`${winner.name} ihaleyi kazandı: ${space.name} (${a.highestBid}₺)`) 
+    } else {
+      log.push('Kazanan teklifçinin bakiyesi yetersiz; ihale iptal.')
+    }
+    state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+    for (const m of log) out.push({ type:'msg', text:m })
+    out.push({ type:'state', state }); return out
+  }
+
   const curId = state.order[state.turnIndex]
   // Handle deferred card continuation
   if (evt.type === 'continueCard') {
@@ -530,6 +582,29 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
   const mePlayer = me
 
   switch (evt.type) {
+    case 'finalizeAuction': {
+      const a = state.auction
+      if (!a.active) { break }
+      if (a.spaceId == null) { a.active = false; a.participants = []; a.highestBid = 0; a.highestBidder = null; break }
+      if (!a.highestBidder || a.highestBid <= 0) {
+        // No bids; close auction without sale
+        log.push('İhale sona erdi: teklif yok.')
+        state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+        break
+      }
+      const winner = (state as any).players[a.highestBidder]
+      const space = board.spaces[a.spaceId]
+      if (!winner) { state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }; break }
+      if (winner.cash >= a.highestBid) {
+        winner.cash -= a.highestBid
+        winner.properties.push(space.id)
+        log.push(`${winner.name} ihaleyi kazandı: ${space.name} (${a.highestBid}₺)`)
+      } else {
+        log.push('Kazanan teklifçinin bakiyesi yetersiz; ihale iptal.')
+      }
+      state.auction = { active:false, spaceId:null, participants:[], highestBid:0, highestBidder:null, minIncrement:10 }
+      break
+    }
     case 'roll': {
       if (mePlayer.inJail) {
         const d1 = 1 + Math.floor(Math.random()*6)
@@ -649,3 +724,7 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
   out.push({ type: 'state', state })
   return out
 }
+
+
+
+

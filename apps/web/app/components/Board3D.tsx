@@ -91,6 +91,8 @@ type Props = {
     onCardRectsChange?: (map: Record<string, DOMRect>) => void
     /** Whether to show HUD overlays (players strip etc.) */
     showHud?: boolean
+    /** Fullscreen state to scale HUD elements appropriately */
+    isFullscreen?: boolean
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -1500,6 +1502,7 @@ function Board3D({
     activityKey,
     onCardRectsChange,
     showHud,
+    isFullscreen,
 }: Props) {
     // Ensure dev runtime API exists
     useEffect(() => { ensureDevFlagsAPI(); ensureDevZonesAPI() }, [])
@@ -2654,7 +2657,7 @@ function Board3D({
             {/* Players strip HUD over the map (hidden until game starts) */}
             {showHud && (
                 <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 12px', zIndex: 25, pointerEvents: 'auto' }}>
-                    <PlayersStrip players={players as any} order={order as any} currentId={currentPlayerId} activityKey={activityKey} onCardRectsChange={onCardRectsChange} />
+                    <PlayersStrip players={players as any} order={order as any} currentId={currentPlayerId} activityKey={activityKey} onCardRectsChange={onCardRectsChange} isFullscreen={isFullscreen as any} />
                 </div>
             )}
             {/* Fullscreen 3D property card viewer over a blue background */}
@@ -2666,8 +2669,6 @@ function Board3D({
 }
 
 export default memo(Board3D)
-
-
 
 
 
