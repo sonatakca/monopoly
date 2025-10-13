@@ -97,7 +97,7 @@ export default function DiceRoll({
       a.clampWhenFinished = true
       a.setLoop(THREE.LoopOnce, 1)
       // Spectators play faster to "sync catch up"
-      a.timeScale = mode === 'roller' ? 1.0 : 1.6
+      a.timeScale = mode === 'roller' ? 0.6 : 1.0
       a.enabled = true
       a.reset().play()
       anyStarted = true
@@ -132,3 +132,4 @@ export default function DiceRoll({
 
 // Optional: preload a common clip to warm cache
 useGLTF.preload?.('/animations/dice 6-6.glb')
+

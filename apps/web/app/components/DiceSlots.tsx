@@ -108,15 +108,15 @@ function SlotReel({ target, trigger, durationMs = 1200, delayMs = 0, size = 28, 
   )
 }
 
-export default function DiceSlots({ d1, d2, trigger, align = "center" as const, size = 28 }: { d1: 1 | 2 | 3 | 4 | 5 | 6; d2: 1 | 2 | 3 | 4 | 5 | 6; trigger?: number | string; align?: "left" | "center" | "right"; size?: number }) {
+export default function DiceSlots({ d1, d2, trigger, align = "center" as const, size = 280 }: { d1: 1 | 2 | 3 | 4 | 5 | 6; d2: 1 | 2 | 3 | 4 | 5 | 6; trigger?: number | string; align?: "left" | "center" | "right"; size?: number }) {
   const wrap: React.CSSProperties = useMemo(
     () => ({ display: "flex", gap: 10, alignItems: "center", justifyContent: align, width: "100%" }),
     [align]
   )
   return (
     <div style={wrap}>
-      <SlotReel target={d1} trigger={trigger} durationMs={600} delayMs={0} size={size} />
-      <SlotReel target={d2} trigger={trigger} durationMs={1000} delayMs={120} size={size} />
+      <SlotReel target={d1} trigger={trigger} durationMs={1500} delayMs={0} size={size} />
+      <SlotReel target={d2} trigger={trigger} durationMs={2300} delayMs={120} size={size} />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useState, useRef, Suspense, useCallback } from 'react'
 import { socket } from '../lib/socket'
@@ -847,7 +847,7 @@ export default function Home() {
   const [suppressButtons, setSuppressButtons] = useState(false)
   const suppressTimerRef = useRef<number | null>(null)
   function armSuppress(ms: number) {
-    try { if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current as any) } catch {}
+    try { if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current as any) } catch { }
     setSuppressButtons(true)
     suppressTimerRef.current = window.setTimeout(() => setSuppressButtons(false), ms) as any
   }
@@ -1351,7 +1351,7 @@ export default function Home() {
 
 
 
-              routeCompleteDelayMs={1000} routeStartDelayMs={2000}
+              routeCompleteDelayMs={500} routeStartDelayMs={state?.lastDice ? 3200 : 0}
               currentPlayerId={state?.order?.[state?.turnIndex ?? 0]}
               activityKey={activityTick}
               showHud={!!state?.started}
@@ -1434,11 +1434,11 @@ export default function Home() {
                     trigger={rollTick}
                     mode={isMyTurn ? 'roller' : 'spectator'}
                     castShadows={!getDevFlag('disableDiceShadows')}
-                    onFinished={() => { try { setDicePlaying(false) } catch {} }}
+                    onFinished={() => { try { setDicePlaying(false) } catch { } }}
                   />
                 </Suspense>
               )}
-              </Board3D>
+            </Board3D>
             {/* Money animations overlay */}
             <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
             {/* Pending action card: show after any hop completes */}
@@ -1796,6 +1796,7 @@ export default function Home() {
     </main >
   )
 }
+
 
 
 

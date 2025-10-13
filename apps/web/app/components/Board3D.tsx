@@ -1571,10 +1571,10 @@ function Board3D({
             const active = (movingRef.current.size > 0)
             if (globalRouteActiveRef.current !== active) {
                 globalRouteActiveRef.current = active
-                ;(window as any).MonopolyRouteActive = active
+                    ; (window as any).MonopolyRouteActive = active
                 window.dispatchEvent(new CustomEvent('monopoly:routeActive', { detail: { active } }))
             } else {
-                ;(window as any).MonopolyRouteActive = active
+                ; (window as any).MonopolyRouteActive = active
             }
         } catch { }
     }
@@ -2564,9 +2564,7 @@ function Board3D({
                             })()}
                             {!jailCineRef.current[p.id] && (
                                 (hopSteps.length >= 2) ? (
-                                    <HopAnimator
-                                        steps={hopSteps}
-                                        startAt={hopStartAt}
+                                    <HopAnimator steps={hopSteps} startAt={hopStartAt}
                                         stepMs={260}
                                         hopHeight={0.40}
                                         lastStepScale={2}
@@ -2668,3 +2666,8 @@ function Board3D({
 }
 
 export default memo(Board3D)
+
+
+
+
+

@@ -7,6 +7,7 @@ import * as THREE from "three"
 export type HopStep = { to: [number, number, number]; yaw: number }
 
 type Props = {
+  startDelayMs?: number
   steps: HopStep[]
   startAt: number
   stepMs?: number
@@ -22,7 +23,7 @@ type Props = {
   children: React.ReactNode
 }
 
-export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight = 0.28, lastStepScale = 1, lastHopScale = 1, onSegmentEnd, onStart, onDone, children }: Props) {
+export default function HopAnimator({ steps, startAt, startDelayMs = 0, stepMs = 2600, hopHeight = 0.28, lastStepScale = 1, lastHopScale = 1, onSegmentEnd, onStart, onDone, children }: Props) {
   const groupRef = useRef<THREE.Group>(null)
   const posRef = useRef<[number, number, number] | null>(null)
   const yawRef = useRef<number>(0)
@@ -55,7 +56,7 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
     const segments = Math.max(0, steps.length - 1)
     if (segments <= 0) return
 
-    const timeline = now - startAt
+    const timeline = now - (startAt + (startDelayMs || 0))
     if (timeline < 0) return // waiting to start
 
     if (!startedRef.current) { startedRef.current = true; onStart?.() }
@@ -133,3 +134,4 @@ export default function HopAnimator({ steps, startAt, stepMs = 2600, hopHeight =
     </group>
   )
 }
+
