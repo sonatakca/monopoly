@@ -42,7 +42,7 @@ export default function MonopolyMoney({
       <line
         x1="5.2"
         y1="10.4"
-        x2="18.8"
+        x2="9"
         y2="10.4"
         stroke={color}
         strokeWidth={strokeWidth * 2 / 3}

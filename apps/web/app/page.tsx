@@ -17,7 +17,8 @@ import { ensureDevFlagsAPI, getDevFlag } from './components/dev/devFlags'
 import RoomsList from './components/RoomsList'
 import { PLAYER_DOTS } from './components/playerColors'
 import GameButtons, { MetallicActionButton } from './components/GameButtons'
-import { DollarSign, Gavel } from 'lucide-react'
+import { BanknoteArrowUp } from 'lucide-react'
+import { RiAuctionLine } from "react-icons/ri";
 import MoneyFx, { type MoneyFxHandle, type MoneyTransfer } from './components/MoneyFx'
 import board from '@shared/board.tr.json'
 import './preload-assets'
@@ -1336,13 +1337,7 @@ export default function Home() {
         {getDevFlag('showFPSTracker' as any) && (
           <DevFPS />
         )}
-        <div className="r3f-toolbar" style={{ display: 'flex', gap: 8, marginBottom: 8, justifyContent: 'center' }}>
-          <button onClick={() => setPreset(0)}>Kamera 1</button>
-          <button onClick={() => setPreset(1)}>Kamera 2</button>
-          <button onClick={() => setPreset(2)}>Kamera 3</button>
-          <button onClick={() => setPreset(3)}>Kamera 4</button><button onClick={() => setTopDown(true)}>Kuş Bakışı</button>
-          <button onClick={toggleFullscreen}>{isFullscreen ? 'Pencere' : 'Tam Ekran'}</button>
-        </div>
+
         {!getDevFlag('disable3D') && (
           <>
             <Board3D
@@ -1730,16 +1725,18 @@ export default function Home() {
                             >
                               <MetallicActionButton
                                 label={canBuyNow ? 'Satın Al' : 'Yetersiz Bakiye'}
-                                icon={<DollarSign size={18} />}
+                                icon={<BanknoteArrowUp size={18} />}
                                 onClick={doBuy}
                                 accentColor={currentAccent}
                                 disabled={!canBuyNow}
+                                iconGap={0}
                               />
                               <MetallicActionButton
                                 label={'Açık Arttırma'}
-                                icon={<Gavel size={18} />}
+                                icon={<RiAuctionLine size={18} />}
                                 onClick={doAuction}
                                 accentColor={currentAccent}
+                                iconGap={10}
                               />
                             </div>
 
@@ -1825,23 +1822,7 @@ export default function Home() {
                 { right: 12, top: '50%', transform: 'translateY(-50%)' },
               ]
               const chip: any = { background: 'rgba(0,0,0,0.35)', color: '#fff', padding: '6px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)', fontSize: 12, zIndex: 3 }
-              return order.slice(0, 8).map((pid: string, idx: number) => {
-                const p = state.players[pid]
-                if (!p) return null
-                const pos = styles[idx] || { top: 12, left: 12 }
-                const ready = (state as any).ready?.[pid]
-                return (
-                  <div key={`overlay-${pid}`} style={{ position: 'absolute', ...pos }}>
-                    <div style={chip}>
-                      <b style={{ opacity: 0.95 }}>{p.name}</b>
-                      <span style={{ opacity: 0.85 }}> - {p.cash}</span>
-                      {ready !== undefined && (
-                        <span style={{ marginLeft: 6, opacity: 0.75 }}>({ready ? 'hazır' : 'bekliyor'})</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })
+
             })()}
           </>
         )}

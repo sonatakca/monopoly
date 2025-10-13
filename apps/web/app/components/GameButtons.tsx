@@ -50,6 +50,7 @@ export function MetallicActionButton({
   accentColor = '#3b82f6',
   width,  // optional fixed width for the shell
   disabled = false,
+  iconGap = 8,
 }: {
   label: string
   icon: React.ReactNode
@@ -57,12 +58,15 @@ export function MetallicActionButton({
   accentColor?: string
   width?: number
   disabled?: boolean
+  iconGap?: number
 }) {
 
   const OUTER_HEIGHT = 40
   const RING = 3               // ring thickness
   const RADIUS = 999
   const METAL_BASE = '#b9c1cb'
+
+  const ICON_BOX = 24;
 
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
@@ -108,13 +112,15 @@ export function MetallicActionButton({
   const innerBtn: React.CSSProperties = {
     position: 'relative',
     zIndex: 1,
-    display: 'inline-flex',
+    display: 'grid',
+    // gridTemplateColumns: `${ICON_BOX}px 1fr ${ICON_BOX}px`,
+    gridTemplateColumns: `${ICON_BOX}px 1fr`,
+    columnGap: iconGap,
     alignItems: 'center',
-    justifyContent: 'center',    // <- keep content centered
-    gap: 8,
+    justifyItems: 'center',
     height: '100%',
-    width: '100%',               // <- fill shell so both buttons are equal width
-    padding: '0 16px',
+    width: '100%',
+    padding: '0 12px',
     border: 0,
     borderRadius: RADIUS,
     background: `linear-gradient(180deg, ${light}, ${dark})`,
@@ -122,7 +128,6 @@ export function MetallicActionButton({
     fontWeight: 800,
     letterSpacing: 0.2,
     lineHeight: 1,
-    whiteSpace: 'nowrap',
     cursor: disabled ? 'not-allowed' : 'pointer',
     userSelect: 'none',
     outline: 'none',
@@ -133,7 +138,7 @@ export function MetallicActionButton({
       'inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.35)',
     transition: 'filter 120ms ease, box-shadow 120ms ease, opacity 120ms ease',
     opacity: disabled ? 0.65 : 1,
-  }
+  };
 
   return (
     <div

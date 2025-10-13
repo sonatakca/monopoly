@@ -201,7 +201,7 @@ export default function ActionCardModal3D({
         {/* Continue button overlay */}
         {showContinue && (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'end center', pointerEvents: 'none' }}>
-            <div style={{ marginBottom: 32, pointerEvents: 'auto' }}>
+            <div style={{ marginBottom: 120, pointerEvents: 'auto' }}>
               <MetallicActionButton
                 label="Devam Et"
                 icon={<ChevronRight size={18} />}

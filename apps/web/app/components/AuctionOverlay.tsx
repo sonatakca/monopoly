@@ -5,6 +5,8 @@ import type { RoomState, Player } from '@shared/types'
 import board from '@shared/board.tr.json'
 import PropertyCard from './PropertyCard'
 import GameButtons, { MetallicActionButton } from './GameButtons'
+import MonopolyMoney from './icons/MonopolyMoney'
+import { div } from 'three/examples/jsm/nodes/Nodes.js'
 
 
 export type AuctionOverlayProps = {
@@ -30,6 +32,10 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
   const sentFinalizeRef = useRef<boolean>(false)
   const rafRef = useRef<number | null>(null)
   const [nowTick, setNowTick] = useState(0)
+  const winnerRef = useRef<{ id: string | null; bid: number } | null>(null)
+  const lastLeaderRef = useRef<{ id: string; bid: number } | null>(null)
+
+
 
   const highestKey = `${a.highestBid}:${a.highestBidder ?? ''}`
   const lastKeyRef = useRef<string>('')
@@ -50,7 +56,7 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
   useEffect(() => {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
     if (a.active && stage === 'hidden') {
-      startUntilRef.current = now + 5000
+      startUntilRef.current = now + 3000
       setStage('start')
       setVisible(true)
       // New auction: reset bid tracking and timers
@@ -58,12 +64,26 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
       lastKeyRef.current = ''
       deadlineRef.current = 0
       sentFinalizeRef.current = false
+      winnerRef.current = null            // <-- reset winner
     }
     if (!a.active && (stage === 'start' || stage === 'going')) {
+      winnerRef.current = lastLeaderRef.current ?? null
+
+
       finishUntilRef.current = now + 2000
       setStage('finished')
     }
   }, [a.active, stage])
+
+  //--------------------------------------
+  useEffect(() => {
+    // capture the latest non-null leader as soon as it appears/changes
+    if (a.highestBidder) {
+      lastLeaderRef.current = { id: a.highestBidder, bid: a.highestBid }
+    }
+    // Optional: if the server clears highestBidder during an active auction,
+    // don't erase lastLeaderRef — we want to keep the last known leader.
+  }, [a.highestBidder, a.highestBid])
 
   // Ticks
   useEffect(() => {
@@ -125,7 +145,7 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
   }
   const panel: React.CSSProperties = {
     position: 'relative', width: 'min(620px, 92vw)', scale: (isFullscreen ? '1.4' : '0.7'), borderRadius: 16, overflow: 'hidden',
-    boxShadow: '0 18px 80px rgba(0,0,0,0.5)', pointerEvents: 'auto', background: 'rgba(0,0,0,0.70)'
+    boxShadow: '0 18px 80px rgba(0,0,0,0.5)', pointerEvents: 'auto', background: 'rgba(40,40,40,0.70)'
   }
   const header: React.CSSProperties = {
     position: 'absolute', left: 0, right: 0, top: 0, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -152,17 +172,27 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
                 <span style={{ opacity: 0.9 }}>Mülk:</span>
                 <span style={{ fontWeight: 800 }}>{(space as any).name}</span>
               </div>
-            ) && (
-                <div style={{ ...pill, fontSize: 13 }}>
-                  <span style={{ opacity: 0.9 }}>Orijinal Fiyat:</span>
-                  <span style={{ fontWeight: 800 }}>{(space as any).price}</span>
-                </div>
-              )}
-            {a.highestBid > 0 && (
+            )}
+            {space && (
+              <div style={{ ...pill, fontSize: 13 }}>
+                <span style={{ opacity: 0.9 }}>Orijinal Fiyat:</span>
+                <span style={{ fontWeight: 800 }}>{(space as any).price}</span>
+              </div>
+            )}
+            {(a.active ? a.highestBid > 0 : !!winnerRef.current) && (
               <div style={{ ...pill, fontSize: 13 }}>
                 <span style={{ opacity: 0.9 }}>Teklif:</span>
-                <span style={{ fontWeight: 900 }}>{a.highestBid}</span>
-                {a.highestBidder && <span style={{ opacity: 0.85 }}>• {(st.players[a.highestBidder] as Player | undefined)?.name || '—'}</span>}
+                <span style={{ fontWeight: 900 }}>
+                  {a.active ? a.highestBid : (winnerRef.current?.bid ?? 0)}
+                </span>
+                {(a.active ? a.highestBidder : winnerRef.current?.id) && (
+                  <span style={{ opacity: 0.85 }}>
+                    • {(() => {
+                      const pid = a.active ? a.highestBidder : winnerRef.current?.id!
+                      return (st.players[pid as string] as Player | undefined)?.name || '—'
+                    })()}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -220,10 +250,30 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
 
               {showFinished && (
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 24, fontWeight: 1000, textShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>Açık Arttırma Bitti</div>
-                  {a.highestBidder && (
+                  <div style={{ fontSize: 28, fontWeight: 1000, textShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>Açık Arttırma Bitti!</div>
+                  {winnerRef.current && (
                     <div style={{ marginTop: 6, fontSize: 16 }}>
-                      Kazanan: {(st.players[a.highestBidder] as Player | undefined)?.name || '—'} — <b>{a.highestBid}</b>
+                      {(() => {
+                        const pid = winnerRef.current!.id!
+                        const name = (st.players[pid] as Player | undefined)?.name || '—'
+                        return (<div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                          <>
+                            <span>
+                              Kazanan:
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <span style={{ fontSize: '50px', margin: 'auto' }}>
+                                {name}
+                              </span>
+                              <div style={{ display: 'flex', gap: '5px', margin: 'auto' }}>
+                                <MonopolyMoney size={45} color="#ffd54f" />
+                                <b style={{ fontSize: '40px' }}>{winnerRef.current!.bid}</b>
+                              </div>
+                            </div>
+                          </>
+                        </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>
