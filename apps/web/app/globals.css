@@ -3,6 +3,21 @@
 html, body { height: 100%; user-select: none }
 body { margin: 0 }
 
+
+/* :root {
+  --bg: #0e1116;
+  --bg-2: #11151b;
+  --panel: rgba(255,255,255,0.06);
+  --text: #e7ecf3;
+  --muted: #a0a7b3;
+  --border: rgba(255,255,255,0.10);
+  --accent: #ef4444;
+  --accent-2: #f87171;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+} */
 :root {
   --bg: #0e1116;
   --bg-2: #11151b;
@@ -10,15 +25,15 @@ body { margin: 0 }
   --text: #e7ecf3;
   --muted: #a0a7b3;
   --border: rgba(255,255,255,0.10);
-  --accent: #ef4444; /* Monopoly red */
-  --accent-2: #f87171;
+  --accent: #2563eb;
+  --accent-2: #60a5fa;
   --danger: #ef4444;
   --success: #22c55e;
   --radius: 14px;
   --shadow: 0 10px 30px rgba(0,0,0,0.35);
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
     --bg: #f6f7fb;
     --bg-2: #eef1f6;
