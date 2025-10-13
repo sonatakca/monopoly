@@ -18,6 +18,7 @@ import { DEFAULT_TOKEN_ROTATION } from '@shared/tokenRotation'
 import HopAnimator, { type HopStep } from './HopAnimator'
 
 type Lighting = {
+    ambient?: number
     hemi?: number
     key?: number
     fill?: number
