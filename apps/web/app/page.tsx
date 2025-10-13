@@ -21,6 +21,7 @@ import { DollarSign, Gavel } from 'lucide-react'
 import MoneyFx, { type MoneyFxHandle, type MoneyTransfer } from './components/MoneyFx'
 import board from '@shared/board.tr.json'
 import './preload-assets'
+import { Autour_One } from 'next/font/google'
 const NAME_KEY = 'monopoly:name'
 const PLACE_KEY = 'monopoly:placements'
 
@@ -1603,7 +1604,7 @@ export default function Home() {
                   <div
                     onWheel={forwardWheelToCanvas}
                     style={{
-                      width: 380,
+                      width: 'auto',
                       borderRadius: 16,
                       overflow: 'hidden',
                       color: '#fff',
@@ -1686,68 +1687,98 @@ export default function Home() {
                         <div style={{ flex: '0 0 auto' }}>
                           <PropertyCard id={buyModal.tile} side={'f'} width={140} />
                         </div>
-                        <div style={{ flex: 1, display: 'grid', gap: 10 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                            <span style={{ opacity: 0.9 }}>Fiyat</span>
-                            <span style={{ fontWeight: 800 }}>{price}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                            <span style={{ opacity: 0.9 }}>Cuzdanin</span>
-                            <span style={{ fontWeight: 800, color: canBuyNow ? '#34d399' : '#f87171' }}>{playerCash}</span>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                            <MetallicActionButton
-                              label={canBuyNow ? 'Satin Al' : 'Bakiye Yetersiz'}
-                              icon={<DollarSign size={18} />}
-                              onClick={doBuy}
-                              accentColor={currentAccent}
-                              disabled={!canBuyNow}
-                            />
-                            <MetallicActionButton
-                              label={'Acik Arttirma'}
-                              icon={<Gavel size={18} />}
-                              onClick={doAuction}
-                              accentColor={currentAccent}
-                            />
-                          </div>
-
-                          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
-                            {canBuyNow ? 'Satin almak icin tikla' : 'Yetersiz bakiye'} - Acik arttirma ile herkese sans ver
-                          </div>
-                          {/* Countdown bar: full ΓåÆ 0 with smooth transform and solid color shift */}
-                          {(() => {
-                            const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1ΓåÆ0
-                            const hue = Math.round(120 * remaining) // 120=green ΓåÆ 0=red
-                            const barColor = `hsl(${hue} 80% 48%)`
-
-                            const track: React.CSSProperties = {
-                              position: 'relative',
-                              height: 8,
-                              background: 'rgba(255,255,255,0.10)',
-                              borderRadius: 6,
-                              overflow: 'hidden',
-                              marginTop: 2,
-                              border: '1px solid rgba(255,255,255,0.08)'
-                            }
-
-                            const fill: React.CSSProperties = {
-                              position: 'absolute',
-                              inset: 0,                  // full size; we scale it
-                              background: barColor,      // solid color (no gradient)
-                              transform: `scaleX(${remaining})`,
-                              transformOrigin: 'left center',
-                              transition: 'transform 180ms cubic-bezier(0.22,1,0.36,1), background-color 140ms linear',
-                              willChange: 'transform',
-                              backfaceVisibility: 'hidden'
-                            }
-
-                            return (
-                              <div style={track} aria-label="Kalan süre">
-                                <div style={fill} />
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                <span style={{ opacity: 0.9 }}>Tapu Senedinin Fiyatı:</span>
+                                <span style={{ fontWeight: 800, fontSize: 20 }}>{price}</span>
                               </div>
-                            )
-                          })()}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                <span style={{ opacity: 0.9 }}>Elinde olan para:
+                                </span>
+                                <span style={{ fontWeight: 1000, fontSize: 20, color: canBuyNow ? '#34d399' : '#f87171' }}>{playerCash}</span>
+                              </div>
+                            </div>
+
+                            {/* <div style={{ display: 'flex', flexDirection: 'column', margin: 'auto', gap: 10, marginTop: 2 }}>
+                              <MetallicActionButton
+                                label={canBuyNow ? 'Satın Al' : 'Yetersiz Bakiye'}
+                                icon={<DollarSign size={18} />}
+                                onClick={doBuy}
+                                accentColor={currentAccent}
+                                disabled={!canBuyNow}
+                              />
+                              <MetallicActionButton
+                                label={'Açık Arttırma'}
+                                icon={<Gavel size={18} />}
+                                onClick={doAuction}
+                                accentColor={currentAccent}
+                              />
+                            </div> */}
+
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 10,
+                                margin: 'auto',
+                                marginTop: 2,
+                                width: 'max-content',     // <- container becomes as wide as the widest child
+                                alignItems: 'stretch',     // <- children can take that width
+                              }}
+                            >
+                              <MetallicActionButton
+                                label={canBuyNow ? 'Satın Al' : 'Yetersiz Bakiye'}
+                                icon={<DollarSign size={18} />}
+                                onClick={doBuy}
+                                accentColor={currentAccent}
+                                disabled={!canBuyNow}
+                              />
+                              <MetallicActionButton
+                                label={'Açık Arttırma'}
+                                icon={<Gavel size={18} />}
+                                onClick={doAuction}
+                                accentColor={currentAccent}
+                              />
+                            </div>
+
+
+                            {/* Countdown bar: full ΓåÆ 0 with smooth transform and solid color shift */}
+                            {(() => {
+                              const remaining = Math.max(0, Math.min(1, 1 - (buyModal.progress ?? 0))) // 1ΓåÆ0
+                              const hue = Math.round(120 * remaining) // 120=green ΓåÆ 0=red
+                              const barColor = `hsl(${hue} 80% 48%)`
+
+                              const track: React.CSSProperties = {
+                                position: 'relative',
+                                height: 8,
+                                background: 'rgba(255,255,255,0.10)',
+                                borderRadius: 6,
+                                overflow: 'hidden',
+                                marginTop: 2,
+                                border: '1px solid rgba(255,255,255,0.08)'
+                              }
+
+                              const fill: React.CSSProperties = {
+                                position: 'absolute',
+                                inset: 0,                  // full size; we scale it
+                                background: barColor,      // solid color (no gradient)
+                                transform: `scaleX(${remaining})`,
+                                transformOrigin: 'left center',
+                                transition: 'transform 180ms cubic-bezier(0.22,1,0.36,1), background-color 140ms linear',
+                                willChange: 'transform',
+                                backfaceVisibility: 'hidden'
+                              }
+
+                              return (
+                                <div style={track} aria-label="Kalan süre">
+                                  <div style={fill} />
+                                </div>
+                              )
+                            })()}
+                          </div>
+
 
 
                         </div>

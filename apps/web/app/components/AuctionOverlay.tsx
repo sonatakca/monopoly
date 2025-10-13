@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { RoomState, Player } from '@shared/types'
 import board from '@shared/board.tr.json'
 import PropertyCard from './PropertyCard'
+import GameButtons, { MetallicActionButton } from './GameButtons'
+
 
 export type AuctionOverlayProps = {
   state?: RoomState | null
@@ -122,7 +124,7 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
     position: 'absolute', inset: 0, zIndex: 50, pointerEvents: 'none', display: 'grid', placeItems: 'center'
   }
   const panel: React.CSSProperties = {
-    position: 'relative', width: 'min(620px, 92vw)', scale: (isFullscreen ? '1.5' : '0.5'), borderRadius: 16, overflow: 'hidden',
+    position: 'relative', width: 'min(620px, 92vw)', scale: (isFullscreen ? '1.4' : '0.7'), borderRadius: 16, overflow: 'hidden',
     boxShadow: '0 18px 80px rgba(0,0,0,0.5)', pointerEvents: 'auto', background: 'rgba(0,0,0,0.70)'
   }
   const header: React.CSSProperties = {
@@ -150,7 +152,12 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
                 <span style={{ opacity: 0.9 }}>Mülk:</span>
                 <span style={{ fontWeight: 800 }}>{(space as any).name}</span>
               </div>
-            )}
+            ) && (
+                <div style={{ ...pill, fontSize: 13 }}>
+                  <span style={{ opacity: 0.9 }}>Orijinal Fiyat:</span>
+                  <span style={{ fontWeight: 800 }}>{(space as any).price}</span>
+                </div>
+              )}
             {a.highestBid > 0 && (
               <div style={{ ...pill, fontSize: 13 }}>
                 <span style={{ opacity: 0.9 }}>Teklif:</span>
@@ -188,8 +195,22 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
               {showGoing && (
                 <div style={{ display: 'grid', gap: 12, justifyItems: 'center' }}>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button style={canBid10 ? btn : btnDisabled} disabled={!canBid10} onClick={() => send({ type: 'bid', amount: a.highestBid + 10 })}>+10</button>
-                    <button style={canBid100 ? btn : btnDisabled} disabled={!canBid100} onClick={() => send({ type: 'bid', amount: a.highestBid + 100 })}>+100</button>
+                    <MetallicActionButton
+                      label={'+10'}
+                      icon={''}
+                      // icon={<DollarSign size={18} />}
+                      onClick={() => send({ type: 'bid', amount: a.highestBid + 10 })}
+                      accentColor={accentColor}
+                      disabled={!canBid10}
+                    />
+                    <MetallicActionButton
+                      label={'+100'}
+                      icon={''}
+                      // icon={<DollarSign size={18} />}
+                      onClick={() => send({ type: 'bid', amount: a.highestBid + 100 })}
+                      accentColor={accentColor}
+                      disabled={!canBid100}
+                    />
                     {isParticipant && !isHighest && a.highestBid > 0 && (
                       <button style={{ ...btn, background: 'linear-gradient(180deg, #ef4444 0%, #1f2937 180%)', boxShadow: '0 6px 18px #ef444444' }} onClick={() => send({ type: 'passBid' })}>Pas</button>
                     )}

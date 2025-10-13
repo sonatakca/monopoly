@@ -72,19 +72,19 @@ export function MetallicActionButton({
   const dark = useMemo(() => darken(accentColor, 0.25), [accentColor])
   const textOnAccent = useMemo(() => (luminance(light) > 0.65 ? '#111827' : '#ffffff'), [light])
 
-  // OUTER SHELL — applies transform so the metallic underlay follows
+  // OUTER SHELL
   const shell: React.CSSProperties = {
     position: 'relative',
-    display: 'inline-flex',
+    display: 'flex',             // (inline-flex -> flex) so width:100% works within the column
     alignItems: 'center',
     justifyContent: 'center',
     height: OUTER_HEIGHT,
-    padding: RING,               // even ring on all sides
+    padding: RING,
     boxSizing: 'border-box',
     borderRadius: RADIUS,
-    overflow: 'hidden',          // clip metallic canvas to curve
+    overflow: 'hidden',
     isolation: 'isolate',
-    width,
+    width: '100%',               // <- stretch to the parent’s width
     transform: pressed ? 'translateY(1px) scale(0.985)' : hovered ? 'translateY(-1px)' : 'translateY(0)',
     transition: 'transform 120ms ease',
   }
@@ -104,14 +104,16 @@ export function MetallicActionButton({
     zIndex: 0,
   }
 
-  // INNER PILL — no transform; only brightness/box-shadow
+  // INNER PILL
   const innerBtn: React.CSSProperties = {
     position: 'relative',
     zIndex: 1,
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',    // <- keep content centered
     gap: 8,
     height: '100%',
+    width: '100%',               // <- fill shell so both buttons are equal width
     padding: '0 16px',
     border: 0,
     borderRadius: RADIUS,
