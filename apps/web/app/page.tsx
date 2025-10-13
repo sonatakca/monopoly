@@ -6,6 +6,7 @@ import type { ServerEvent, ClientEvent, RoomState, Player } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
 import PropertyCard from './components/PropertyCard'
 import DiceRoll from './components/DiceRoll'
+import DiceSlots from './components/DiceSlots'
 import ActionCardModal3D from './components/ActionCardModal3D'
 import { DevFPS } from './components/dev/DevFeatures'
 import PlacementPanel from './components/dev/PlacementPanel'
@@ -1354,6 +1355,15 @@ export default function Home() {
               currentPlayerId={state?.order?.[state?.turnIndex ?? 0]}
               activityKey={activityTick}
               showHud={!!state?.started}
+              overlayChildren={state?.lastDice && !getDevFlag('disableDice') ? (
+                <DiceSlots
+                  d1={state.lastDice.d1 as 1 | 2 | 3 | 4 | 5 | 6}
+                  d2={state.lastDice.d2 as 1 | 2 | 3 | 4 | 5 | 6}
+                  trigger={rollTick}
+                  align="center"
+                  size={30}
+                />
+              ) : null}
               onCardRectsChange={useCallback((map: Record<string, DOMRect>) => {
                 setCardRects(prev => {
                   const a = Object.keys(prev), b = Object.keys(map)
@@ -1428,7 +1438,7 @@ export default function Home() {
                   />
                 </Suspense>
               )}
-            </Board3D>
+              </Board3D>
             {/* Money animations overlay */}
             <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
             {/* Pending action card: show after any hop completes */}
@@ -1786,13 +1796,6 @@ export default function Home() {
     </main >
   )
 }
-
-
-
-
-
-
-
 
 
 

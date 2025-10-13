@@ -74,6 +74,7 @@ type Props = {
 
     tokenGapsY?: Record<string, number>
     children?: ReactNode
+    overlayChildren?: ReactNode
 
     onTokenRouteStart?: (playerId: string) => void
     onTokenRouteComplete?: ((info: { playerId: string; tileIndex: number }) => void) | ((playerId: string) => void)
@@ -1489,6 +1490,7 @@ function Board3D({
     placementAliases = {},
     tokenGapsY,
     children,
+    overlayChildren,
     onTokenRouteStart,
     onTokenRouteComplete,
     routeCompleteDelayMs = 0,
@@ -2658,6 +2660,12 @@ function Board3D({
                 )}                {/* Extra scene content (e.g., animated dice) */}
                 {children}
             </Canvas>
+            {/* Overlay (2D) children inside the scene container */}
+            {overlayChildren && (
+                <div style={{ position: 'absolute', left: 0, right: 0, top: 8, display: 'flex', justifyContent: 'center', zIndex: 30, pointerEvents: 'none' }}>
+                    {overlayChildren}
+                </div>
+            )}
             {/* Players strip HUD over the map (hidden until game starts) */}
             {showHud && (
                 <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 12px', zIndex: 25, pointerEvents: 'auto' }}>
