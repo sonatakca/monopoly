@@ -106,10 +106,10 @@ export default function PlayerCard({ player, orderIndex = 0, isCurrent = false, 
   }, [player.cash])
 
   // Counts for station and utility (for tiny icons next to money)
-  const stationIds = useMemo(() => (board as any).spaces.map((s: any, i: number) => s?.type === 'STATION' ? i : -1).filter((v: number) => v >= 0), [])
-  const utilIds = useMemo(() => (board as any).spaces.map((s: any, i: number) => s?.type === 'UTILITY' ? i : -1).filter((v: number) => v >= 0), [])
-  const stationCount = useMemo(() => stationIds.filter(id => owned.has(id)).length, [stationIds, owned])
-  const utilCount = useMemo(() => utilIds.filter(id => owned.has(id)).length, [utilIds, owned])
+  const stationIds: number[] = useMemo(() => (board as any).spaces.map((s: any, i: number) => s?.type === 'STATION' ? i : -1).filter((v: number) => v >= 0), [])
+  const utilIds: number[] = useMemo(() => (board as any).spaces.map((s: any, i: number) => s?.type === 'UTILITY' ? i : -1).filter((v: number) => v >= 0), [])
+  const stationCount = useMemo(() => stationIds.filter((id: number) => owned.has(id)).length, [stationIds, owned])
+  const utilCount = useMemo(() => utilIds.filter((id: number) => owned.has(id)).length, [utilIds, owned])
 
   const frame: React.CSSProperties = {
     width: '100%',
@@ -260,7 +260,7 @@ export default function PlayerCard({ player, orderIndex = 0, isCurrent = false, 
       {/* money delta indicator merged into balance display */}
       <div style={boardBand}>
         <div style={grid}>
-          {PROPERTY_TEMPLATE.map((id) => {
+          {PROPERTY_TEMPLATE.map((id: number) => {
             const kind = kindOf(id)
             const ownedByMe = owned.has(id)
             const mort = ownedByMe && isMortgaged(id)

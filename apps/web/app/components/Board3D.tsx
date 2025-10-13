@@ -2486,20 +2486,7 @@ function Board3D({
                     // Use cached hop steps and start time captured at route creation
                     const hopSteps: HopStep[] = hopStepsRef.current[p.id] || []
                     const hopStartAt = routeStartAtRef.current[p.id] ?? (typeof performance !== 'undefined' ? performance.now() : Date.now())
-                    // If route crosses GO (tile 0), schedule a pass-go event during the hop
-                    try {
-                        const goIdxInSeq = seq.indexOf(0)
-                        if (goIdxInSeq >= 0) {
-                            const stepIndexInBase = 1 + goIdxInSeq // baseSteps: [prev, ...seq, final]
-                            const STEP_MS = 260 // must match HopAnimator stepMs below
-                            const nowTs = (typeof performance !== 'undefined' ? performance.now() : Date.now())
-                            const eta = hopStartAt + STEP_MS * stepIndexInBase
-                            const delay = Math.max(0, Math.round(eta - nowTs))
-                            setTimeout(() => {
-                                try { window.dispatchEvent(new CustomEvent('monopoly:passGo', { detail: { playerId: p.id } })) } catch { }
-                            }, delay)
-                        }
-                    } catch { }
+                    // pass-go event scheduling handled via onSegmentEnd + hopBreakRef
 
                     const fallback = showFallbackSpheres ? (
                         <group position={idle.to}>

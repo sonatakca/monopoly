@@ -86,7 +86,7 @@ export default function PlayersStrip({ players, order, currentId, style, activit
   return (
     <div style={{ ...grid, ...style }}>
       {cells.map((p, i) => (
-        <div key={i} style={cell} ref={el => (refs.current[i] = el)}>
+        <div key={i} style={cell} ref={el => { refs.current[i] = el }}>
           {p ? (
             <PlayerCard
               player={p}
