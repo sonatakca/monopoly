@@ -533,6 +533,9 @@ export default function Home() {
   const scenePanelRef = useRef<HTMLDivElement | null>(null)
   const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
+  const buyTimerStartedRef = useRef(false)
+
+
   useEffect(() => {
     const host = scenePanelRef.current
     if (!host) return
@@ -1084,6 +1087,7 @@ export default function Home() {
   function closeBuyModal(after?: () => void) {
     setBuyVisible(false)
     stopBuyTimer()
+    buyTimerStartedRef.current = false
     window.setTimeout(() => {
       setBuyModal(null)
       after?.()
@@ -1242,6 +1246,11 @@ export default function Home() {
     const tile = buyModal?.tile
     if (tile == null) return
 
+    if (animatingMyMove) return
+
+    if (buyTimerStartedRef.current) return
+    buyTimerStartedRef.current = true
+
     let stopped = false
     const DURATION = 30_000
     const start = performance.now()
@@ -1263,7 +1272,7 @@ export default function Home() {
 
     buyTimerRef.current = requestAnimationFrame(tick)
     return () => { stopped = true; stopBuyTimer() }
-  }, [buyModal?.tile])
+  }, [buyModal?.tile, animatingMyMove])
 
 
 
