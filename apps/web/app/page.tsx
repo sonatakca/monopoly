@@ -1302,7 +1302,7 @@ export default function Home() {
           height={1157}
           priority
           sizes="100vw"
-          style={{ display: 'block', width: '120%', height: 'auto', margin: '0 auto', borderRadius: 6, scale: '1.2', marginTop: '10vh', marginBottom: '5vh' }}
+          style={{ display: 'block', width: '100%', height: 'auto', margin: '0 auto', borderRadius: 6, scale: '1', marginTop: '10vh', marginBottom: '5vh' }}
         />
       </div>
       <h1 style={{ margin: 'auto', fontSize: 80, fontWeight: 800, marginBottom: '9vh' }} className='shine-base shine' data-text="Monopoly'ye Hoşgeldin!">Monopoly'ye Hoşgeldin!</h1>
