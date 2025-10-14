@@ -16,6 +16,9 @@ import type { Player } from '@shared/types'
 import { DEFAULT_TOKEN_GAPS_Y, DEFAULT_TOKEN_SCALES } from '@shared/tokens'
 import { DEFAULT_TOKEN_ROTATION } from '@shared/tokenRotation'
 import HopAnimator, { type HopStep } from './HopAnimator'
+import bakedHouseZonesRaw from '../../public/baked-in-content/house-hotel-zones.json';
+
+
 
 type Lighting = {
     ambient?: number
@@ -39,6 +42,79 @@ type TokenModel = {
 export type CameraPreset = { pos: [number, number, number]; target: [number, number, number]; fov?: number }
 type PathDirection = 'clockwise' | 'counterclockwise'
 export type PlacementOverrides = { [tileIndex: number]: Array<[number, number] | null> }
+// --- Dev: HOUSE ZONES (4 slots per property tile) ---------------------------------
+type HouseZoneSlotTx = {
+    dx?: number;
+    dz?: number;
+};
+
+type HouseZoneHotelTx = {
+    dx?: number;
+    dz?: number;
+};
+
+type HouseZoneTx = {
+    dx?: number;      // shift center (world units)
+    dz?: number;
+    wScale?: number;  // width multiplier
+    dScale?: number;  // depth/length multiplier
+    rot?: number;     // rotates the 4-slot layout (radians, applied to rects)
+    modelYaw?: number; // extra yaw you can apply to house/hotel STL when rendering
+    slots?: Record<string, HouseZoneSlotTx>; // Per-slot offsets
+    houseCount?: number;
+    hotel?: HouseZoneHotelTx;
+};
+
+type HouseZonesMap = Record<string, HouseZoneTx>;
+
+const HOUSE_ZONES_LS = 'monopoly.dev.houseZones';
+
+// Only these tiles show house editor overlay
+const HOUSE_TILES = new Set<number>([1, 3, 6, 8, 9, 11, 13, 14, 16, 18, 19, 21, 23, 24, 26, 27, 29, 31, 32, 34, 37, 39]);
+
+const BAKED_HOUSE_ZONES: HouseZonesMap = (() => {
+    const map: HouseZonesMap = {};
+    try {
+        if (Array.isArray(bakedHouseZonesRaw)) {
+            for (const entry of bakedHouseZonesRaw) {
+                if (entry && typeof entry.tile === 'number') {
+                    map[String(entry.tile)] = entry.tx || {};
+                }
+            }
+        }
+    } catch { }
+    return map;
+})();
+
+function readHouseZones(): HouseZonesMap {
+    try {
+        const raw = typeof window !== 'undefined' ? localStorage.getItem(HOUSE_ZONES_LS) : null;
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Object.keys(parsed).length > 0) {
+                return parsed;
+            }
+        }
+    } catch { }
+    return BAKED_HOUSE_ZONES;
+}
+function writeHouseZones(m: HouseZonesMap) {
+    try { if (typeof window !== 'undefined') localStorage.setItem(HOUSE_ZONES_LS, JSON.stringify(m)); } catch { }
+}
+
+const HOUSE_INDEX_PHASE = -10; // quarter-turn backward
+
+function propertyRectForHouse(index: number, S: number, dir: PathDirection, rot: 0 | 90 | 180 | 270) {
+    const physIndex = (index + HOUSE_INDEX_PHASE + 40) % 40;
+    return propertyRectFor(physIndex, S, dir, rot);
+}
+
+// Exportable helper if you want to use yaw elsewhere
+export function getHouseModelYaw(tile: number): number {
+    const m = readHouseZones();
+    const yaw = m[String(tile)]?.modelYaw || 0;
+    return +yaw || 0;
+}
 
 type Props = {
     players?: Record<string, Player>
@@ -96,6 +172,60 @@ type Props = {
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
+
+const HouseModel = ({ color = '#22c55e', ...props }) => {
+    // The path must be relative to the `public` directory.
+    const geom = useLoader(STLLoader, '/models/Property Types/House.stl');
+
+    const processedGeom = useMemo(() => {
+        const g = geom.clone();
+        g.computeVertexNormals();
+        g.computeBoundingBox();
+        const bb = g.boundingBox as THREE.Box3;
+
+        // Center the model and set its base to y=0
+        g.translate(
+            -(bb.min.x + bb.max.x) / 2,
+            -bb.min.y,
+            -(bb.min.z + bb.max.z) / 2
+        );
+        return g;
+    }, [geom]);
+
+    return (
+        <group {...props}>
+            <mesh
+                geometry={processedGeom}
+                // ⬇️ ADD THIS LINE TO LAY THE MODEL FLAT ⬇️
+                rotation={[-Math.PI / 2, 0, 0]}
+                castShadow
+                receiveShadow
+            >
+                <meshStandardMaterial color={color} roughness={0.5} metalness={0.1} />
+            </mesh>
+        </group>
+    );
+};
+
+const HotelModel = ({ color = '#ef4444', ...props }) => {
+    const geom = useLoader(STLLoader, '/models/Property Types/Hotel.stl');
+    const processedGeom = useMemo(() => {
+        const g = geom.clone();
+        g.computeVertexNormals();
+        g.computeBoundingBox();
+        const bb = g.boundingBox as THREE.Box3;
+        g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+        return g;
+    }, [geom]);
+
+    return (
+        <group {...props}>
+            <mesh geometry={processedGeom} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
+                <meshStandardMaterial color={color} roughness={0.5} metalness={0.1} />
+            </mesh>
+        </group>
+    );
+};
 
 // Extract a stable token name key from its URL, e.g. 
 // "/models/Player Tokens/Cat.stl" -> "CAT"
@@ -647,6 +777,7 @@ function RouteAnimatedToken({
                 return
             }
         }
+
 
         const now = performance.now()
         const tRaw = Math.min(1, (now - st.start) / stepMs)
@@ -1460,6 +1591,251 @@ function CameraRig({ preset, lerp = 0.08, instant = false, suspend = false }: {
     return null
 }
 
+function ensureHouseZonesAPI(getDump: () => any[]) {
+    if (typeof window === 'undefined') return;
+    const w: any = window as any;
+    w.MonopolyDev = w.MonopolyDev || {};
+    w.MonopolyDev.houseZones = w.MonopolyDev.houseZones || {};
+
+    if (!w.MonopolyDev.houseZones.get) {
+        w.MonopolyDev.houseZones.get = (tile: number) => {
+            const m = readHouseZones();
+            return m[String(tile)] || {};
+        };
+    }
+    if (!w.MonopolyDev.houseZones.set) {
+        w.MonopolyDev.houseZones.set = (tile: number, patch: Partial<HouseZoneTx>) => {
+            const m = readHouseZones();
+            const k = String(tile);
+            m[k] = { ...(m[k] || {}), ...(patch || {}) };
+            writeHouseZones(m);
+        };
+    }
+    if (!w.MonopolyDev.houseZones.clear) {
+        w.MonopolyDev.houseZones.clear = () => {
+            try { localStorage.removeItem(HOUSE_ZONES_LS); } catch { }
+        };
+    }
+    if (!w.MonopolyDev.houseZones.dump) {
+        w.MonopolyDev.houseZones.dump = () => {
+            const d = getDump();
+            try { console.log('[houseZones dump]', d); } catch { }
+            return d;
+        };
+    }
+    if (!w.MonopolyDev.houseZones.download) {
+        w.MonopolyDev.houseZones.download = (filename?: string) => {
+            const data = getDump();
+            try {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = filename || 'house-zones.json';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            } catch { }
+            return data;
+        };
+    }
+    if (!w.MonopolyDev.houseZones.applyDump) {
+        w.MonopolyDev.houseZones.applyDump = (arr: any) => {
+            try {
+                if (!Array.isArray(arr)) { console.warn('[houseZones] applyDump expects array'); return; }
+                const m: HouseZonesMap = {};
+                for (const it of arr) {
+                    if (!it || typeof it.tile !== 'number') continue;
+                    m[String(it.tile)] = { ...(it.tx || {}) };
+                }
+                writeHouseZones(m);
+                console.log('[houseZones] applied', Object.keys(m).length, 'entries');
+            } catch (e) {
+                console.warn('[houseZones applyDump failed]', e);
+            }
+        };
+    }
+}
+function HouseZonesOverlay({
+    S, dir, rot,
+}: { S: number; dir: PathDirection; rot: 0 | 90 | 180 | 270 }) {
+    // --- Easy-to-edit constants ---
+    const HOUSE_SCALE = 0.0125;
+
+    const HOTEL_SCALE = 0.018;
+
+    const HOUSE_Y_OFFSET = 0.08;
+
+    const HOTEL_Y_OFFSET = 0.13;
+
+    const [selTile, setSelTile] = useState<number | null>(null);
+    const [selSlot, setSelSlot] = useState<number | 'hotel' | null>(null);
+    const [, force] = useState(0);
+
+    useEffect(() => {
+        const dump = () => {
+            const out: any[] = [];
+            for (const ti of HOUSE_TILES) {
+                out.push({ tile: ti, tx: readHouseZones()[String(ti)] || {} });
+            }
+            return out;
+        };
+        ensureHouseZonesAPI(dump);
+    }, []);
+    useEffect(() => { /* ... forceRender listener ... */ }, []);
+
+    useEffect(() => {
+        if (!getDevFlag('editPropertyZones')) return;
+
+        const onKey = (e: KeyboardEvent) => {
+            const key = e.key.toLowerCase();
+
+            // Global House/Hotel Toggles
+            if (key === 'n' || key === 'm' || key === 'b') {
+                e.preventDefault();
+                const m = readHouseZones();
+                let targetCount = 0;
+
+                if (key === 'n') {
+                    targetCount = (m['1']?.houseCount === 4) ? 0 : 4;
+                } else if (key === 'm') {
+                    targetCount = (m['1']?.houseCount === 5) ? 0 : 5;
+                } else if (key === 'b') {
+                    targetCount = 0;
+                }
+
+                for (const ti of HOUSE_TILES) {
+                    const k = String(ti);
+                    m[k] = { ...(m[k] || {}), houseCount: targetCount };
+                }
+
+                writeHouseZones(m);
+                force(v => v + 1);
+                return;
+            }
+
+            // Individual Editing Logic
+            if (selTile == null) return;
+
+            const step = S / 11;
+            const move = (e.shiftKey ? 0.02 : 0.008) * step;
+            const m = readHouseZones();
+            const k = String(selTile);
+            const cur: HouseZoneTx = m[k] || {};
+            let changed = false;
+            const set = (patch: Partial<HouseZoneTx>) => { m[k] = { ...cur, ...patch }; changed = true; };
+
+            // --- Part 1: Handle Slot-Specific Movement (WASD) ---
+            if (selSlot === 'hotel') {
+                const hotelTx = cur.hotel || {};
+                const nextHotelTx: HouseZoneHotelTx = { ...hotelTx };
+                switch (key) {
+                    case 'w': nextHotelTx.dz = (nextHotelTx.dz || 0) + move; break;
+                    case 's': nextHotelTx.dz = (nextHotelTx.dz || 0) - move; break;
+                    case 'a': nextHotelTx.dx = (nextHotelTx.dx || 0) - move; break;
+                    case 'd': nextHotelTx.dx = (nextHotelTx.dx || 0) + move; break;
+                }
+                if (nextHotelTx.dx !== hotelTx.dx || nextHotelTx.dz !== hotelTx.dz) set({ hotel: nextHotelTx });
+
+            } else if (typeof selSlot === 'number') {
+                const slots = cur.slots || {};
+                const slotKey = String(selSlot);
+                const curSlotTx = slots[slotKey] || {};
+                const nextSlotTx: HouseZoneSlotTx = { ...curSlotTx };
+                switch (key) {
+                    case 'w': nextSlotTx.dz = (nextSlotTx.dz || 0) + move; break;
+                    case 's': nextSlotTx.dz = (nextSlotTx.dz || 0) - move; break;
+                    case 'a': nextSlotTx.dx = (nextSlotTx.dx || 0) - move; break;
+                    case 'd': nextSlotTx.dx = (nextSlotTx.dx || 0) + move; break;
+                }
+                if (nextSlotTx.dx !== curSlotTx.dx || nextSlotTx.dz !== curSlotTx.dz) set({ slots: { ...slots, [slotKey]: nextSlotTx } });
+            }
+
+            // --- Part 2: Handle Group-Level Controls (Movement, Scale, Rotation) ---
+            const scaleStep = e.shiftKey ? 0.04 : 0.015;
+            const yawStep = ((e.shiftKey ? 15 : 5) * Math.PI) / 180;
+            switch (key) {
+                // Group movement (only if no specific slot is selected)
+                case 'w': if (selSlot === null) set({ dz: (cur.dz || 0) + move }); break;
+                case 's': if (selSlot === null) set({ dz: (cur.dz || 0) - move }); break;
+                case 'a': if (selSlot === null) set({ dx: (cur.dx || 0) - move }); break;
+                case 'd': if (selSlot === null) set({ dx: (cur.dx || 0) + move }); break;
+                // Scaling (always active)
+                case 't': set({ wScale: (cur.wScale || 1) + scaleStep }); break;
+                case 'g': set({ wScale: Math.max(0.2, (cur.wScale || 1) - scaleStep) }); break;
+                case 'y': set({ dScale: (cur.dScale || 1) + scaleStep }); break;
+                case 'h': set({ dScale: Math.max(0.2, (cur.dScale || 1) - scaleStep) }); break;
+                // Rotation (always active)
+                case 'e': set({ rot: (((cur.rot || 0) + Math.PI / 2) % (Math.PI * 2)) }); break;
+                case 'r': set({ modelYaw: (cur.modelYaw || 0) + yawStep }); break;
+                case 'f': set({ modelYaw: (cur.modelYaw || 0) - yawStep }); break;
+            }
+
+            // --- Part 3: Global Keys ---
+            if (key === 'escape') { setSelTile(null); setSelSlot(null); }
+            if (changed) { e.preventDefault(); writeHouseZones(m); force(v => v + 1); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [selTile, selSlot, S]);;
+
+    return (
+        <group>
+            {Array.from(HOUSE_TILES).map((ti) => {
+                const pz = propertyRectForHouse(ti, S, dir, rot);
+                const tx = readHouseZones()[String(ti)] || {};
+                const sx = pz.w * (tx.wScale || 1), sz = pz.d * (tx.dScale || 1);
+                const cx = pz.cx + (tx.dx || 0), cz = pz.cz + (tx.dz || 0);
+                const rotY = tx.rot || 0;
+                const sel = selTile === ti;
+                const houseCount = tx.houseCount || 0;
+
+                const innerD = (sz - (0.08 * sz) * 3) / 4;
+                const houseSlots = Array.from({ length: 4 }, (_, i) => ({ lx: 0, lz: -sz / 2 + innerD / 2 + i * (innerD + (0.08 * sz)) }));
+                const hotelTx = tx.hotel || {};
+
+                return (
+                    <group key={`hz-${ti}`} position={[cx, 0.007, cz]} rotation={[0, rotY, 0]}>
+                        {/* Render 3D Models */}
+                        <Suspense fallback={null}>
+                            {houseCount > 0 && houseCount < 5 && (
+                                Array.from({ length: houseCount }).map((_, houseIdx) => {
+                                    const slot = houseSlots[houseIdx]; if (!slot) return null;
+                                    const slotTx = tx.slots?.[String(houseIdx)] || {};
+                                    const position: [number, number, number] = [slot.lx + (slotTx.dx || 0), HOUSE_Y_OFFSET, slot.lz + (slotTx.dz || 0)];
+                                    return <HouseModel key={`house-on-${ti}-${houseIdx}`} position={position} rotation={[0, getHouseModelYaw(ti), 0]} scale={HOUSE_SCALE} />;
+                                })
+                            )}
+                            {houseCount === 5 && (
+                                <HotelModel position={[hotelTx.dx || 0, HOTEL_Y_OFFSET, hotelTx.dz || 0]} rotation={[0, getHouseModelYaw(ti), 0]} scale={HOTEL_SCALE} />
+                            )}
+                        </Suspense>
+
+                        {/* Always render all 5 editor planes */}
+
+                        {/* Hotel Editor Plane */}
+                        <group position={[hotelTx.dx || 0, 0, hotelTx.dz || 0]}>
+                            <mesh rotation={[-Math.PI / 2, 0, 0]} onPointerDown={(e) => { e.stopPropagation(); setSelTile(ti); setSelSlot('hotel'); }}>
+                                <planeGeometry args={[sx * 0.7, sz * 0.35]} />
+                                <meshBasicMaterial color={'#fca5a5'} transparent opacity={sel && selSlot === 'hotel' ? 0.5 : 0.2} />
+                            </mesh>
+                        </group>
+
+                        {/* House Slot Editor Planes */}
+                        {houseSlots.map((slot, idx) => {
+                            const isSlotSel = sel && selSlot === idx;
+                            const slotTx = tx.slots?.[String(idx)] || {};
+                            return (
+                                <group key={`hslot-${ti}-${idx}`} position={[slot.lx + (slotTx.dx || 0), 0, slot.lz + (slotTx.dz || 0)]}>
+                                    <mesh rotation={[-Math.PI / 2, 0, 0]} onPointerDown={(e) => { e.stopPropagation(); setSelTile(ti); setSelSlot(idx); }}>
+                                        <planeGeometry args={[sx * 0.94, innerD * 0.90]} />
+                                        <meshBasicMaterial color={'#7dd3fc'} transparent opacity={isSlotSel ? 0.5 : 0.15} depthWrite={false} />
+                                    </mesh>
+                                </group>
+                            );
+                        })}
+                    </group>
+                );
+            })}
+        </group>
+    );
+}
 /* Main */
 function Board3D({
     players = {},
@@ -1504,6 +1880,17 @@ function Board3D({
     showHud,
     isFullscreen,
 }: Props) {
+
+    const [, forceUpdate] = useState(0);
+
+    useEffect(() => {
+        const handler = () => {
+            // When any dev flag changes, force the component to re-render
+            forceUpdate(v => v + 1);
+        };
+        window.addEventListener('monopoly.devflag', handler);
+        return () => window.removeEventListener('monopoly.devflag', handler);
+    }, []);
     // Ensure dev runtime API exists
     useEffect(() => { ensureDevFlagsAPI(); ensureDevZonesAPI() }, [])
     // Expose runtime token gap API once on mount
@@ -1596,6 +1983,42 @@ function Board3D({
             } catch { }
         }
     })
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const w: any = window as any;
+        if (!w.MonopolyDev) w.MonopolyDev = {};
+
+        w.MonopolyDev.buyHouseForPlayer = (playerId: string) => {
+            // Use the 'players' prop which is available in Board3D
+            if (!players || !players[playerId]) {
+                console.warn(`[buyHouseForPlayer] Player with ID "${playerId}" not found.`);
+                return;
+            }
+
+            const targetPlayer = players[playerId];
+            const tileIndex = targetPlayer.position;
+
+            console.log(`[buyHouseForPlayer] Simulating house placement for player "${playerId}" on tile ${tileIndex}`);
+
+            const m = readHouseZones();
+            const k = String(tileIndex);
+            const cur: HouseZoneTx = m[k] || {};
+            const count = cur.houseCount || 0;
+
+            if (count < 5) {
+                m[k] = { ...cur, houseCount: count + 1 };
+                writeHouseZones(m);
+                window.dispatchEvent(new CustomEvent('monopoly:forceRender'));
+            } else {
+                console.warn(`[buyHouseForPlayer] Tile ${tileIndex} already has a hotel.`);
+            }
+        };
+
+        return () => {
+            if (w.MonopolyDev) delete w.MonopolyDev.buyHouseForPlayer;
+        };
+    }, [players]);
     // Force a React re-render when highlight attachments change (step start/end, route done)
     const [, forceScene] = useState(0)
     // Guarded route logger to avoid spamming the console every frame
@@ -1765,7 +2188,76 @@ function Board3D({
             const t = (board as any).spaces?.[i]?.type
             return t === 'PROPERTY' || t === 'STATION' || t === 'UTILITY'
         } catch { return false }
+
     }
+
+
+
+    // Runtime API like tileZones
+    function ensureHouseZonesAPI(getDump: () => any[]) {
+        if (typeof window === 'undefined') return;
+        const w: any = window as any;
+        w.MonopolyDev = w.MonopolyDev || {};
+        w.MonopolyDev.houseZones = w.MonopolyDev.houseZones || {};
+
+        if (!w.MonopolyDev.houseZones.get) {
+            w.MonopolyDev.houseZones.get = (tile: number) => {
+                const m = readHouseZones();
+                return m[String(tile)] || {};
+            };
+        }
+        if (!w.MonopolyDev.houseZones.set) {
+            w.MonopolyDev.houseZones.set = (tile: number, patch: Partial<HouseZoneTx>) => {
+                const m = readHouseZones();
+                const k = String(tile);
+                m[k] = { ...(m[k] || {}), ...(patch || {}) };
+                writeHouseZones(m);
+            };
+        }
+        if (!w.MonopolyDev.houseZones.clear) {
+            w.MonopolyDev.houseZones.clear = () => {
+                try { localStorage.removeItem(HOUSE_ZONES_LS); } catch { }
+            };
+        }
+        if (!w.MonopolyDev.houseZones.dump) {
+            w.MonopolyDev.houseZones.dump = () => {
+                const d = getDump();
+                try { console.log('[houseZones dump]', d); } catch { }
+                return d;
+            };
+        }
+        if (!w.MonopolyDev.houseZones.download) {
+            w.MonopolyDev.houseZones.download = (filename?: string) => {
+                const data = getDump();
+                try {
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = filename || 'house-zones.json';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                } catch { }
+                return data;
+            };
+        }
+        if (!w.MonopolyDev.houseZones.applyDump) {
+            w.MonopolyDev.houseZones.applyDump = (arr: any) => {
+                try {
+                    if (!Array.isArray(arr)) { console.warn('[houseZones] applyDump expects array'); return; }
+                    const m: HouseZonesMap = {};
+                    for (const it of arr) {
+                        if (!it || typeof it.tile !== 'number') continue;
+                        m[String(it.tile)] = { ...(it.tx || {}) };
+                    }
+                    writeHouseZones(m);
+                    console.log('[houseZones] applied', Object.keys(m).length, 'entries');
+                } catch (e) {
+                    console.warn('[houseZones applyDump failed]', e);
+                }
+            };
+        }
+    }
+
+
+
 
     // --- Dev: tile zones (toggle via MonopolyDev.set('tileZones', true)) ----
     const tileZonesEnabled = getDevFlag('tileZones')
@@ -1951,6 +2443,8 @@ function Board3D({
         return () => window.removeEventListener('keydown', handler)
     }, [tileZonesEnabled, selZone, tzMap, topSize])
 
+
+
     return (
         <div className="scene" style={{ position: 'relative', cursor: (hoverTile != null ? 'pointer' : 'default') as any }}>
             <Canvas
@@ -1997,6 +2491,10 @@ function Board3D({
                             setOrbiting(false);
                         }}
                     />
+                )}
+                {/* House zones editor (4 slots) */}
+                {getDevFlag('editPropertyZones') && (
+                    <HouseZonesOverlay S={topSize} dir={pathDirection} rot={indexRotation} />
                 )}
 
                 {/* Lights & Atmosphere */}
@@ -2317,9 +2815,16 @@ function Board3D({
                             const getPhase = () => routePhaseRef.current[pid]
                             groups.push(
                                 <group key={`hop-${pid}-${ti}`} position={[cx, y, cz]} rotation={[0, rotY, 0]}>
-                                    <PhasePulse x={0} z={0} y={0} sx={sx} sz={sz} getPhase={getPhase} color="#ffffff" baseOpacity={0.10} ampOpacity={0.40} />
+                                    <PhasePulse
+                                        x={0}
+                                        z={0}
+                                        y={0}
+                                        sx={sx}
+                                        sz={sz}
+                                        getPhase={getPhase}
+                                    />
                                 </group>
-                            )
+                            );
                         }
                         // drop flash (short fade after landing)
                         const flash = routeFlashRef.current[pid]

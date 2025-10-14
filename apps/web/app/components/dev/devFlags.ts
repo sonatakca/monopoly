@@ -25,6 +25,9 @@ export type DevFlag =
   | 'tileZones'
   | 'dumpTileZones'
   | 'getCurrentCamData'
+  | 'houseZones'
+  | 'editPropertyZones'
+  | 'buyHouse'
 
 const LS_PREFIX = 'monopoly.dev.flag.'
 
