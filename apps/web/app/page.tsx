@@ -24,6 +24,7 @@ import board from '@shared/board.tr.json'
 import './preload-assets'
 import { Autour_One } from 'next/font/google'
 import Image from 'next/image'
+import GoToGameButton from './components/GoToGameButton'
 
 
 const NAME_KEY = 'monopoly:name'
@@ -1304,7 +1305,11 @@ export default function Home() {
           style={{ display: 'block', width: '120%', height: 'auto', margin: '0 auto', borderRadius: 6, scale: '1.2', marginTop: '10vh', marginBottom: '5vh' }}
         />
       </div>
-      <h1 style={{ margin: 'auto', fontSize: 80, fontWeight: 800, marginBottom: '480px' }} className='shine-base shine' data-text="Monopoly'ye Hoşgeldin!">Monopoly'ye Hoşgeldin!</h1>
+      <h1 style={{ margin: 'auto', fontSize: 80, fontWeight: 800, marginBottom: '9vh' }} className='shine-base shine' data-text="Monopoly'ye Hoşgeldin!">Monopoly'ye Hoşgeldin!</h1>
+      <div className='no-card' style={{ textAlign: "center", marginBottom: '50vh' }}>
+        <GoToGameButton targetId="game" sticky={false} showWhen="above-target" />
+      </div>
+
 
       {/* Join / status */}
       <section style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0', flexWrap: 'wrap' }}>
@@ -1355,7 +1360,7 @@ export default function Home() {
       <PlacementPanel />
 
       {/* 3D board */}
-      <div ref={scenePanelRef} style={{ marginTop: 12, position: 'relative' }}>
+      <div id='game' ref={scenePanelRef} style={{ marginTop: 12, position: 'relative' }}>
         <LoadingOverlay />
         {getDevFlag('showFPSTracker' as any) && (
           <DevFPS />
