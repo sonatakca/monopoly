@@ -17,7 +17,7 @@ import { ensureDevFlagsAPI, getDevFlag } from './components/dev/devFlags'
 import RoomsList from './components/RoomsList'
 import { PLAYER_DOTS } from './components/playerColors'
 import GameButtons, { MetallicActionButton } from './components/GameButtons'
-import { BanknoteArrowUp } from 'lucide-react'
+import { BanknoteArrowUp, Expand, Shrink } from 'lucide-react'
 import { RiAuctionLine } from "react-icons/ri";
 import MoneyFx, { type MoneyFxHandle, type MoneyTransfer } from './components/MoneyFx'
 import board from '@shared/board.tr.json'
@@ -1484,6 +1484,60 @@ export default function Home() {
                 </Suspense>
               )}
             </Board3D>
+            {/* Top-right scene toolbar */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                zIndex: 60,
+                pointerEvents: 'auto',
+                display: 'flex',
+                gap: 8,
+                background: 'transparent',
+                border: '0px solid rgba(255,255,255,0.16)',
+                borderRadius: 10,
+                padding: '6px 8px',
+                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)'
+              }}
+            >
+              <button id='fullscreenButton' className={'no-style'} onClick={toggleFullscreen}>
+                {!isFullscreen ?
+                  <svg viewBox="0 0 24 24">
+                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 
+            7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                  </svg>
+                  : <svg viewBox="0 0 24 24">
+                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 
+            11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+                  </svg>}
+              </button>
+            </div>
+
+            <div
+              style={{
+                position: 'absolute',
+                top: 12,
+                left: 65,
+                zIndex: 60,
+                pointerEvents: 'auto',
+                display: 'flex',
+                gap: 8,
+                background: 'transparent',
+                border: '0px solid rgba(255,255,255,0.16)',
+                borderRadius: 10,
+                padding: '6px 8px',
+                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(6px)'
+              }}
+            >
+              <button id='optionsButton' className={'no-style'}>
+                <svg viewBox="0 0 24 24">
+
+                  <path d="M10 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z" />
+                </svg>
+
+              </button>
+            </div>
             {/* Money animations overlay */}
             <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
             {/* Auction overlay */}
@@ -1859,7 +1913,6 @@ export default function Home() {
     </main >
   )
 }
-
 
 
 

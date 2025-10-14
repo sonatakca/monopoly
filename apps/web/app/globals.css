@@ -162,6 +162,55 @@ button:hover { transform: translateY(-1px); background: rgba(255,255,255,0.10) }
 button:active { transform: translateY(0) scale(0.98) }
 button:disabled { opacity: .5; cursor: not-allowed }
 
+button.no-style {
+  all: unset;                /* nuke inherited button styles */
+  display: inline-grid;      /* keep it clickable + center the icon */
+  place-items: center;
+  cursor: pointer;
+  line-height: 0;            /* no extra vertical space */
+  /* optional sizing: */
+  width: 36px; height: 36px; /* or remove if you want icon-only size */
+  border-radius: 8px;        /* just for nicer hit area */
+}
+button.no-style:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button.no-style > svg { display: block; }
+
+#fullscreenButton, #optionsButton {
+    position: absolute;
+    top:  15px;
+    right:  15px;
+    background: rgba(0,0,0,0.05);
+    border:  0;
+    width:  40px;
+    height:  40px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    transition:  transform .3s;
+    cursor:  pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+#fullscreenButton:hover, #optionsButton:hover {
+    transform: scale(1.125);
+}
+#fullscreenButton:focus, #optionsButton:focus {
+  outline: 2px solid rgba(0, 0, 0, 0.5);
+}
+#fullscreenButton svg:nth-child(2) { 
+    display: none;
+}
+[fullscreen] #fullscreenButton svg:nth-child(1) {
+    display: none;
+}
+[fullscreen] #fullscreenButton svg:nth-child(2) {
+    display: inline-block;
+}
+
+
 input {
   height: 36px; padding: 0 12px; border-radius: 10px; outline: none; color: var(--text);
   background: rgba(255,255,255,0.08); border: 1px solid var(--border);
