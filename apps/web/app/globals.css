@@ -35,15 +35,15 @@ body { margin: 0 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f6f7fb;
-    --bg-2: #eef1f6;
-    --panel: rgba(255,255,255,0.8);
-    --text: #0f172a;
-    --muted: #667085;
-    --border: rgba(15,23,42,0.08);
+    --bg: #0e1116;
+    --bg-2: #11151b;
+    --panel: rgba(255,255,255,0.06);
+  --text: #e7ecf3;
+  --muted: #a0a7b3;
+  --border: rgba(255,255,255,0.10);
     --accent: #2563eb;
     --accent-2: #60a5fa;
-    --shadow: 0 10px 25px rgba(0,0,0,0.08);
+    --shadow: 0 10px 30px rgba(0,0,0,0.35);
   }
 }
 
@@ -52,9 +52,13 @@ html { color-scheme: light dark }
 body {
   font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji);
   color: var(--text);
-  background: radial-gradient(1200px 800px at 10% -20%, rgba(96,165,250,0.18), transparent 60%),
-              radial-gradient(900px 700px at 100% 0%, rgba(34,197,94,0.10), transparent 60%),
-              linear-gradient(180deg, var(--bg), var(--bg-2));
+  --top-strip: 160px; /* height of the top glow */
+  background:
+    linear-gradient(to bottom,
+      rgba(96,165,250,0.9),          /* blue */
+      transparent 47%) 0 0 / 100% var(--top-strip) no-repeat,
+    linear-gradient(180deg, var(--bg), var(--bg-2));
+
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -171,6 +175,14 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in ok
 .stack > main > section,
 .stack > main > div { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px }
 .stack > main > div .scene { border-radius: calc(var(--radius) - 6px) }
+/* opt-out of auto-card */
+.stack > main > .no-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
 
 /* Fullscreen adjustments */
 :fullscreen { width: 100vw; height: 100vh; margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important }
@@ -270,3 +282,158 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in ok
 /* Prevent scroll anchoring on body */
 body.app-body { overflow-anchor: none; }
 
+/* =========================
+   Shiny gradient text (gold/copper) — drop-in snippet
+   Usage:
+   <h1 class="shine-base hover:shine shine-theme-copper" data-text="Eğitimin Aslı">Eğitimin Aslı</h1>
+   ========================= */
+
+/* Animation */
+@keyframes brand-shine-move {
+  0%   { background-position: 300% 0%; }
+  100% { background-position: -300% 0%; }
+}
+
+/* Core */
+.shine-base {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+
+  /* timing knobs (defaults; can be overridden on any element) */
+  --shine-o: 0;                 /* 0 hidden, 1 visible */
+  --shine-speed: 15s;           /* gradient sweep duration */
+  --shine-ease: cubic-bezier(0.075,0.82,0.165,1);
+  --glow-fade: 1200ms;          /* fade duration */
+  --shine-delay: 0ms;           /* delay before fade starts */
+
+  /* color stops (theme overrides below) */
+  --shine-from: rgba(255,215,0,0.9);
+  --shine-to:   rgba(255,180,0,0.9);
+  --shine-via:  #ffffff;
+
+  /* Hide real glyph fill so the pseudo layers control the look */
+  -webkit-text-fill-color: transparent;
+}
+
+/* Solid text layer (fades OUT on hover) */
+.shine-base::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  color: currentColor;
+  -webkit-text-fill-color: currentColor; /* cancel host transparency */
+
+  opacity: calc(1 - var(--shine-o));
+  transition: opacity var(--glow-fade) var(--shine-ease) var(--shine-delay);
+  z-index: 0;
+}
+
+/* Shiny gradient layer (fades IN + animates on hover) */
+.shine-base::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  background: linear-gradient(
+    120deg,
+    var(--shine-via) 0%,
+    var(--shine-from) 25%,
+    var(--shine-to)   75%,
+    var(--shine-via) 100%
+  );
+  background-size: 300% 100%;
+  background-position: -300% 0%;
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+
+  opacity: var(--shine-o);
+  transition: opacity var(--glow-fade) var(--shine-ease) var(--shine-delay);
+  animation: brand-shine-move var(--shine-speed) linear infinite;
+
+  z-index: 1;
+}
+
+/* Toggles (like Tailwind variants) */
+.shine { --shine-o: 1; }                          /* always on */
+.hover\:shine:hover { --shine-o: 1; }             /* on hover */
+.focus-visible\:shine:focus-visible { --shine-o: 1; } /* on keyboard focus */
+
+/* Optional: slower reveal on hover */
+.hover\:shine-slow-in:hover { --glow-fade: 2200ms; --shine-delay: 300ms; }
+.focus-visible\:shine-slow-in:focus-visible { --glow-fade: 2200ms; --shine-delay: 300ms; }
+
+/* Themes */
+.shine-theme-gold {
+  --shine-from: #ffd700;  /* gold */
+  --shine-to:   #ffb000;  /* amber */
+  --shine-via:  #ffffff;
+}
+
+.shine-theme-copper {
+  --shine-from: #7a410b;  /* deep copper */
+  --shine-to:   #7a410b;  /* flat band for a metallic look */
+  --shine-via:  #e09754;  /* highlight */
+}
+
+/* Accessibility: honor reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .shine-base::after { animation-duration: 0.01ms; animation-iteration-count: 1; }
+}
+
+
+/* === Burst rays (thin, crisp, no spill) ================= */
+.burst { position: relative; display: inline-block; isolation: isolate; }
+.burst img, .burst > *:not(svg) { position: relative; z-index: 1; border-radius: 14px; }
+
+/* Overlay around the image */
+.burst-svg {
+  position: absolute;
+  inset: -18px;                         /* ray reach */
+  width: calc(100% + 36px);
+  height: calc(100% + 36px);
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+
+  /* soft circular fade so rays don’t extend under the headline */
+  -webkit-mask-image: radial-gradient(closest-side at 50% 48%, #000 68%, transparent 74%);
+          mask-image: radial-gradient(closest-side at 50% 48%, #000 68%, transparent 74%);
+}
+
+:root{
+  --ray-color: #fff;
+  --ray-opacity: .75;
+  --ray-spin-s: 26s;
+  --ray-pulse-s: 1.6s;
+}
+
+/* Keep stroke thin no matter how big the image is */
+.burst .rays {
+  stroke: var(--ray-color);
+  stroke-width: 2;                      /* thinner lines */
+  vector-effect: non-scaling-stroke;    /* <-- crucial */
+  stroke-linecap: round;
+  opacity: var(--ray-opacity);
+  filter: drop-shadow(0 0 4px rgba(255,255,255,.5));
+  animation: rayPulse var(--ray-pulse-s) ease-in-out infinite;
+}
+
+.burst .spin { transform-origin: 50% 50%; animation: raySpin var(--ray-spin-s) linear infinite; }
+
+/* Hover = a touch brighter, still subtle */
+.burst:hover .rays,
+.burst:focus-within .rays { opacity: .95; filter: drop-shadow(0 0 6px rgba(255,255,255,.8)); }
+
+/* Optional warm tone */
+.burst.burst-gold .rays { stroke: #ffd76e; filter: drop-shadow(0 0 6px rgba(255,215,110,.7)); }
+
+
+@keyframes raySpin { to { transform: rotate(360deg); } }
+@keyframes rayPulse { 0%,100% { stroke-dasharray: 10 60; } 50% { stroke-dasharray: 22 60; } }

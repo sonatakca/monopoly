@@ -23,6 +23,9 @@ import MoneyFx, { type MoneyFxHandle, type MoneyTransfer } from './components/Mo
 import board from '@shared/board.tr.json'
 import './preload-assets'
 import { Autour_One } from 'next/font/google'
+import Image from 'next/image'
+
+
 const NAME_KEY = 'monopoly:name'
 const PLACE_KEY = 'monopoly:placements'
 
@@ -1290,7 +1293,18 @@ export default function Home() {
 
   return (
     <main style={{ padding: '24px 28px' }}>
-      <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>Monopoly</h1>
+      <div className="no-card" style={{ display: 'flex', justifyContent: 'center' }}>
+        <Image
+          src="/Monopoly2.PNG"
+          alt="Monopoly"
+          width={3557}
+          height={1157}
+          priority
+          sizes="100vw"
+          style={{ display: 'block', width: '120%', height: 'auto', margin: '0 auto', borderRadius: 6, scale: '1.2', marginTop: '10vh', marginBottom: '5vh' }}
+        />
+      </div>
+      <h1 style={{ margin: 'auto', fontSize: 80, fontWeight: 800, marginBottom: '480px' }} className='shine-base shine' data-text="Monopoly'ye Hoşgeldin!">Monopoly'ye Hoşgeldin!</h1>
 
       {/* Join / status */}
       <section style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0', flexWrap: 'wrap' }}>
