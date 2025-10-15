@@ -178,12 +178,11 @@ button.no-style:focus-visible {
 }
 button.no-style > svg { display: block; }
 
-#fullscreenButton, #optionsButton {
+
+
+button.modernButton, div.modernButtonContainer {
     position: absolute;
-    top:  15px;
-    right:  15px;
     background: rgba(0,0,0,0.05);
-    border:  0;
     width:  40px;
     height:  40px;
     border-radius: 50%;
@@ -194,22 +193,38 @@ button.no-style > svg { display: block; }
     flex-direction: column;
     justify-content: center;
 }
-#fullscreenButton:hover, #optionsButton:hover {
+ button.modernButton:hover, div.modernButtonContainer:hover {
     transform: scale(1.125);
 }
-#fullscreenButton:focus, #optionsButton:focus {
+button.modernButton:focus-visible, div.modernButtonContainer:focus-visible {
   outline: 2px solid rgba(0, 0, 0, 0.5);
 }
-#fullscreenButton svg:nth-child(2) { 
+button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2){ 
     display: none;
 }
-[fullscreen] #fullscreenButton svg:nth-child(1) {
+[fullscreen] button.modernButton:nth-child(1), div.modernButtonContainer:nth-child(1) {
     display: none;
 }
-[fullscreen] #fullscreenButton svg:nth-child(2) {
+[fullscreen] button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2) {
     display: inline-block;
 }
 
+.tippy-box[data-theme~='custom'] {
+  background-color: #333;
+  color: white;
+  font-size: 14px; /* Reset font size */
+  line-height: 1.4; /* Reset line height */
+  text-align: center; /* Explicitly set text alignment */
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 999;
+   box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+}
+
+.tippy-box[data-theme~='custom'] .tippy-arrow {
+  color: #333;
+}
 
 input {
   height: 36px; padding: 0 12px; border-radius: 10px; outline: none; color: var(--text);

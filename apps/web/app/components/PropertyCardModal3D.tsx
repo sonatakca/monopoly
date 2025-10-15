@@ -183,7 +183,7 @@ export default function PropertyCardModal3D({
           onPointerMissed={startClose}
           shadows
         >
-          <ambientLight intensity={0.05} />
+          <ambientLight intensity={0.8} />
           <directionalLight position={[0, 0, 10]} castShadow intensity={1} />
 
           <Suspense fallback={null}>

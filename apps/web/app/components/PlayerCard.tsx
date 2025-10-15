@@ -5,6 +5,9 @@ import { SET_COLORS, NEUTRAL, STATION_COLOR, UTILITY_COLOR, PLAYER_DOTS } from '
 import { PROPERTY_TEMPLATE, kindOf, colorOf, isMortgaged, nameOf } from './propertyTemplate'
 import board from '@shared/board.tr.json'
 import type { Player } from '@shared/types'
+import Tippy from '@tippyjs/react'
+import 'tippy.js/dist/tippy.css';
+import { followCursor } from 'tippy.js';
 
 type Props = {
   player: Player
@@ -16,6 +19,7 @@ type Props = {
   layoutScale?: number
   /** The unscaled “design” width this card is authored for (default 240) */
   designWidthPx?: number
+  totalPlayers: number
 }
 
 function Money({ value }: { value: number }) {
@@ -59,11 +63,14 @@ export default function PlayerCard({
   activityKey,
   isFullscreen,
   layoutScale = 1,
-  designWidthPx = 240
+  designWidthPx = 240,
+  totalPlayers
 }: Props) {
   const owned = useMemo(() => new Set<number>(player.properties || []), [player.properties])
   const dot = PLAYER_DOTS[(orderIndex || 0) % PLAYER_DOTS.length]
   const dim = !!player.bankrupt
+  const isLastPlayerIn8PlayerGame = totalPlayers === 8 && orderIndex === 7;
+  const horizontalOffsetForLastPlayer = -70; // Negative for left, positive for right
 
   // 30s progress indicator for the top gradient line when current player is active
   const barRef = useRef<HTMLDivElement | null>(null)
@@ -277,7 +284,7 @@ export default function PlayerCard({
       })()}
       <div style={headerBar}>
         <span style={avatar} />
-        <div style={name} title={player.name}>{player.name}</div>
+        <div style={name} >{player.name}</div>
       </div>
       <div style={moneyRow}>
         <span style={moneyLeft} aria-label={`${player.cash} para`}>
@@ -288,14 +295,32 @@ export default function PlayerCard({
               : new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(player.cash)}
           </span>
         </span>
-        <span style={badge} title={`İstasyon: ${stationCount}`}>
-          <svg width="16" height="12" viewBox="0 0 24 16"><rect x="2" y="8" width="20" height="6" rx="1" fill="#ddd" /><rect x="5" y="3" width="4" height="5" fill="#bbb" /><rect x="11" y="3" width="4" height="5" fill="#bbb" /></svg>
-          <b>{stationCount}</b>
-        </span>
-        <span style={badge} title={`Kamu: ${utilCount}`}>
-          <svg width="14" height="14" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7z" fill="#cfd8dc" /></svg>
-          <b>{utilCount}</b>
-        </span>
+        <Tippy
+          content={`İstasyon: ${stationCount}`}
+          followCursor={true}
+          plugins={[followCursor]}
+          offset={[65, -20]}
+          arrow={false}
+          appendTo={() => document.querySelector('#game') || document.body}
+          theme="custom">
+          <span style={badge} >
+            <svg width="16" height="12" viewBox="0 0 24 16"><rect x="2" y="8" width="20" height="6" rx="1" fill="#ddd" /><rect x="5" y="3" width="4" height="5" fill="#bbb" /><rect x="11" y="3" width="4" height="5" fill="#bbb" /></svg>
+            <b>{stationCount}</b>
+          </span>
+        </Tippy>
+        <Tippy
+          content={`Kamu Kuruluşu: ${utilCount}`}
+          followCursor={true}
+          plugins={[followCursor]}
+          offset={[90, -20]}
+          arrow={false}
+          appendTo={() => document.querySelector('#game') || document.body}
+          theme="custom">
+          <span style={badge} >
+            <svg width="14" height="14" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7z" fill="#cfd8dc" /></svg>
+            <b>{utilCount}</b>
+          </span>
+        </Tippy>
       </div>
 
       <div style={boardBand}>
@@ -308,8 +333,8 @@ export default function PlayerCard({
             const bg = ownedByMe
               ? (kind === 'PROPERTY' ? (SET_COLORS[String(setColor)] || NEUTRAL)
                 : (kind === 'STATION' ? STATION_COLOR : UTILITY_COLOR))
-              : NEUTRAL
-            const opacity = ownedByMe ? 1 : 0.6
+              : (SET_COLORS[String(setColor)] || NEUTRAL)
+            const opacity = ownedByMe ? 1 : 0.35
             const chip: React.CSSProperties = {
               width: 8, height: 8,
               borderRadius: 2,
@@ -317,14 +342,26 @@ export default function PlayerCard({
               opacity,
               border: '1px solid rgba(0,0,0,0.65)',
               position: 'relative',
+              cursor: 'pointer',
             }
             const label = `${nameOf(id)}${mort ? ' — (ipotekli)' : ownedByMe ? '' : ''}`
             return (
-              <div key={id} title={label} aria-label={label} style={chip}>
-                {mort && (
-                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 3px)' }} />
-                )}
-              </div>
+              <Tippy
+                key={id} // Use key here on the top-level element
+                content={label}
+                followCursor={true}
+                plugins={[followCursor]}
+                // offset={[isLastPlayerIn8PlayerGame ? horizontalOffsetForLastPlayer : 10, 10]}
+                offset={[10, 10]}
+                arrow={false}
+                appendTo={() => document.querySelector('#game') || document.body}
+                theme="custom">
+                <div key={id} style={chip}>
+                  {mort && (
+                    <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 3px)' }} />
+                  )}
+                </div>
+              </Tippy>
             )
           })}
         </div>

@@ -124,6 +124,7 @@ export default function PlayersStrip({
               isFullscreen={isFullscreen}
               layoutScale={layoutScale}   // ← wired scale
               designWidthPx={DESIGN_CARD_W}
+              totalPlayers={list.length}
             />
           ) : null}
         </div>

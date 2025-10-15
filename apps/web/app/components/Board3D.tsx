@@ -511,6 +511,11 @@ function ClickableBoardPlane({
     size, url, y, ...rest
 }: { size: number; url: string; y: number } & any) {
     const texture = useLoader(THREE.TextureLoader, url) as THREE.Texture; // 👈 narrow the type
+    useMemo(() => {
+        if (texture) {
+            texture.colorSpace = THREE.SRGBColorSpace;
+        }
+    }, [texture]);
     const { gl } = useThree()
     const maxAniso = gl.capabilities.getMaxAnisotropy()
     texture.anisotropy = Math.max(8, maxAniso)
@@ -2501,7 +2506,7 @@ function Board3D({
                 <color attach="background" args={[L.background]} />
                 {/* Mild distance fog to blend with site background */}
                 {fogEnabled && <fog attach="fog" args={[L.background, worldSize * 2.2, worldSize * 4.0]} />}
-                <ambientLight intensity={L.ambient} />
+                <ambientLight intensity={1} />
                 <hemisphereLight color="#ffffff" groundColor="#cfd8dc" intensity={L.hemi} />
                 <directionalLight
                     position={[6, 10, 6]}

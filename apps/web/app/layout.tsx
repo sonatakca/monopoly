@@ -3,6 +3,7 @@ import PreloadMetallic from './components/PreloadMetallic'
 import type React from 'react'
 import { Inter } from 'next/font/google'
 import Image from 'next/image'
+import 'tippy.js/dist/tippy.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
 

@@ -3,6 +3,8 @@
 import React, { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useLoader } from '@react-three/fiber'
+import { RoundedBox } from "@react-three/drei"
+
 
 export type PropertyCard3DProps = {
   id: number
@@ -35,6 +37,11 @@ export default function PropertyCard3D({
 }: PropertyCard3DProps) {
   const frontMap = useLoader(THREE.TextureLoader, `/propertyCards/${id}f.png`)
   const backMap = useLoader(THREE.TextureLoader, `/propertyCards/${id}b.png`)
+
+  useMemo(() => {
+    if (frontMap) frontMap.colorSpace = THREE.SRGBColorSpace;
+    if (backMap) backMap.colorSpace = THREE.SRGBColorSpace;
+  }, [frontMap, backMap]);
 
   // Increase texture quality a bit on supported GPUs
   const maxAniso = THREE.MathUtils.clamp((THREE as any).WebGLRenderer ? 8 : 16, 1, 16)
