@@ -849,6 +849,23 @@ export default function Home() {
     return Object.keys(previewPlayers)
   }, [simPlayers, simOrder, state?.order, previewPlayers])
 
+  const effectiveState = useMemo(() => {
+    const base = state || {
+      roomId: 'preview',
+      started: false,
+      turnIndex: 0,
+      players: {},
+      order: [],
+    };
+
+    return {
+      ...base,
+      players: effectivePlayers,
+      order: effectiveOrder,
+    } as RoomState;
+
+  }, [state, effectivePlayers, effectiveOrder]);
+
   const tokenModels = useMemo(() => {
     const ids = Object.keys(effectivePlayers)
     const cfgs = [
@@ -1432,6 +1449,17 @@ export default function Home() {
               onMortgage={() => alert('İpotek Yap tıklandı')}
               onOptions={() => alert('Seçenekler tıklandı')}
 
+              meId={meId}
+              // fullGameState={state}
+              isSelectingTradePlayer={isSelectingTradePlayer}
+              setIsSelectingTradePlayer={setIsSelectingTradePlayer}
+              openTrade={openTrade}
+
+              tradeState={tradeState}
+              send={send}
+              closeTrade={closeTrade}
+              fullGameState={effectiveState}
+
 
 
               routeCompleteDelayMs={500} routeStartDelayMs={state?.lastDice ? 3200 : 0}
@@ -1905,77 +1933,7 @@ export default function Home() {
         )}
       </div>
 
-      {isSelectingTradePlayer && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center' }}>
-          <div style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 'min(350px, 90vw)',
-            borderRadius: 16,
-            boxShadow: '0 18px 80px rgba(0,0,0,0.5)',
-            background: 'rgba(40,40,40,0.85)',
-            backdropFilter: 'blur(10px)',
-            color: '#fff',
-            zIndex: 101,
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '15px'
-          }}>
-            <h2 style={{ textAlign: 'center', margin: 0, fontSize: '20px' }}>Kiminle takas yapmak istersin?</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {state?.order.filter(pid => pid !== meId).map(pid => (
-                <button
-                  key={pid}
-                  onClick={() => {
-                    openTrade(pid);
-                    setIsSelectingTradePlayer(false);
-                  }}
-                  style={{
-                    padding: '12px',
-                    borderRadius: '8px',
-                    background: 'rgba(255,255,255,0.1)',
-                    color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    textAlign: 'left'
-                  }}
-                >
-                  {state.players[pid]?.name || 'Unknown Player'}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setIsSelectingTradePlayer(false)}
-              style={{
-                marginTop: '10px',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                background: '#ef4444',
-                color: '#fff',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '16px'
-              }}
-            >
-              İptal
-            </button>
-          </div>
-        </div>
-      )}
 
-      {tradeState.isOpen && (
-        <TradeOverlay
-          state={state as any}
-          meId={meId} // Use meId here
-          otherPlayerId={tradeState.otherPlayerId}
-          send={send}
-          onClose={closeTrade}
-        />
-      )}
     </main >
   )
 }

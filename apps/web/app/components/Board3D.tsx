@@ -12,7 +12,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import bakedTileZonesRaw from '../../public/baked-in-content/tile-zones.json'
 import bakedTokenZonesRaw from '../../public/baked-in-content/token-zones.json'
 
-import type { Player } from '@shared/types'
+import type { Player, RoomState } from '@shared/types'
 import { DEFAULT_TOKEN_GAPS_Y, DEFAULT_TOKEN_SCALES } from '@shared/tokens'
 import { DEFAULT_TOKEN_ROTATION } from '@shared/tokenRotation'
 import HopAnimator, { type HopStep } from './HopAnimator'
@@ -26,7 +26,8 @@ import 'tippy.js/dist/tippy.css';
 import { followCursor } from 'tippy.js';
 import { TbCards } from "react-icons/tb";
 import MortgageIcon from './icons/MortgageIcon.png';
-
+import PlayerSelectionModal from './PlayerSelectionModal';
+import TradeOverlay from './TradeOverlay';
 
 type Lighting = {
     ambient?: number
@@ -188,6 +189,14 @@ type Props = {
     onSellHotel?: () => void;
     onMortgage?: () => void;
     onOptions?: () => void;
+    meId?: string | null;
+    fullGameState?: RoomState | null;
+    isSelectingTradePlayer?: boolean;
+    openTrade?: (otherPlayerId: string) => void;
+    setIsSelectingTradePlayer?: React.Dispatch<React.SetStateAction<boolean>>;
+    tradeState?: { isOpen: boolean; otherPlayerId: string | null };
+    send?: (e: any) => void;
+    closeTrade?: () => void;
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -1914,7 +1923,17 @@ function Board3D({
     onSellHotel,
     onMortgage,
     onOptions,
+    meId,
+    fullGameState,
+    isSelectingTradePlayer,
+    openTrade,
+    setIsSelectingTradePlayer,
+    tradeState,
+    send,
+    closeTrade
+
 }: Props) {
+
 
     const [, forceUpdate] = useState(0);
 
@@ -3187,7 +3206,45 @@ function Board3D({
                     </group>
                 )}                {/* Extra scene content (e.g., animated dice) */}
                 {children}
+
+                {isSelectingTradePlayer && fullGameState && (
+                    <Html
+                        center // This makes positioning easier
+                        position={[0, 1, 0]} // Position it in the center, floating 1 unit above the board
+                        as='div'
+                        // This class helps prevent clicks from going through the HTML to the 3D scene
+                        wrapperClass="html-modal-wrapper"
+                    >
+                        <PlayerSelectionModal
+                            order={fullGameState.order}
+                            players={fullGameState.players}
+                            meId={meId ?? null}
+                            onSelectPlayer={(pid) => {
+                                openTrade?.(pid);
+                                setIsSelectingTradePlayer?.(false);
+                            }}
+                            onCancel={() => setIsSelectingTradePlayer?.(false)}
+                        />
+                    </Html>
+                )}
+
+
             </Canvas>
+
+            {tradeState?.isOpen && (
+                <TradeOverlay
+                    // REMOVE state={fullGameState}
+                    // ADD the direct players and order props
+                    players={players!}
+                    order={order!}
+
+                    meId={meId ?? null}
+                    otherPlayerId={tradeState.otherPlayerId}
+                    send={send!}
+                    onClose={closeTrade!}
+                />
+            )}
+
             <div className='modernButtonContainer'
                 style={{
                     position: 'absolute',
@@ -3512,7 +3569,7 @@ function Board3D({
     )
 }
 
-export default memo(Board3D)
+export default Board3D
 
 
 

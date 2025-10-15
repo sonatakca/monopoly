@@ -8,20 +8,24 @@ import MonopolyMoney from './icons/MonopolyMoney';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 import { followCursor } from 'tippy.js';
+import PlayerCard from './PlayerCard';
 
 export type TradeOverlayProps = {
-    state?: RoomState | null;
+    // state?: RoomState | null;
     meId: string | null;
     otherPlayerId: string | null;
     send: (e: any) => void;
     onClose: () => void;
+    players: Record<string, Player>;
+    order: string[];
+
 };
 
-export default function TradeOverlay({ state, meId, otherPlayerId, send, onClose }: TradeOverlayProps) {
-    if (!state || !meId || !otherPlayerId) return null;
+export default function TradeOverlay({ players, order, meId, otherPlayerId, send, onClose }: TradeOverlayProps) {
+    if (!players || !order || !meId || !otherPlayerId) return null;
 
-    const me = state.players[meId];
-    const otherPlayer = state.players[otherPlayerId];
+    const me = players[meId];
+    const otherPlayer = players[otherPlayerId];
 
     if (!me || !otherPlayer) return null;
 
@@ -40,18 +44,21 @@ export default function TradeOverlay({ state, meId, otherPlayerId, send, onClose
     };
 
     const panelStyle: React.CSSProperties = {
+        // --- ADD THESE LINES BACK ---
         position: 'fixed',
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
+        zIndex: 100,
+        // --- END OF ADDED LINES ---
+
         width: 'min(800px, 90vw)',
         borderRadius: 16,
-        overflow: 'hidden',
+        overflow: 'visible',
         boxShadow: '0 18px 80px rgba(0,0,0,0.5)',
-        background: 'rgba(40,40,40,0.85)',
-        backdropFilter: 'blur(10px)',
+        background: 'rgba(25, 30, 45, 0.9)',
         color: '#fff',
-        zIndex: 100,
+        border: '1px solid rgba(255, 255, 255, 0.1)',
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
         gap: '20px',
@@ -62,13 +69,10 @@ export default function TradeOverlay({ state, meId, otherPlayerId, send, onClose
         display: 'flex',
         flexDirection: 'column',
         gap: '15px',
+        alignItems: 'center',
     };
 
-    const headerStyle: React.CSSProperties = {
-        textAlign: 'center',
-        fontSize: '24px',
-        fontWeight: 'bold',
-    };
+    // ... (the rest of the style objects and functions are the same) ...
 
     const moneyInputStyle: React.CSSProperties = {
         width: '100%',
@@ -93,6 +97,7 @@ export default function TradeOverlay({ state, meId, otherPlayerId, send, onClose
         background: 'rgba(0,0,0,0.2)',
         borderRadius: '8px',
         minHeight: '100px',
+        width: '100%',
     };
 
     const propertyChipStyle = (id: number, owned: boolean, selected: boolean): React.CSSProperties => {
@@ -107,7 +112,7 @@ export default function TradeOverlay({ state, meId, otherPlayerId, send, onClose
             borderRadius: '4px',
             background: bg,
             opacity: owned ? (selected ? 1 : 0.8) : 0.1,
-            border: selected ? '1px solid #fff' : '1px solid rgba(0,0,0,0.65)',
+            border: selected ? '2px solid #fff' : '1px solid rgba(0,0,0,0.65)',
             cursor: owned ? 'pointer' : 'not-allowed',
             position: 'relative'
         };
@@ -133,59 +138,67 @@ export default function TradeOverlay({ state, meId, otherPlayerId, send, onClose
     };
 
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 99 }}>
-            <div style={panelStyle}>
-                {/* "Give" Column */}
-                <div style={columnStyle}>
-                    <div style={headerStyle}>You Give ({me.name})</div>
-                    <div>
-                        <input
-                            type="number"
-                            style={moneyInputStyle}
-                            value={moneyToGive}
-                            onChange={e => setMoneyToGive(Math.min(me.cash, Math.max(0, parseInt(e.target.value) || 0)))}
-                        />
-                        <input
-                            type="range"
-                            min="0"
-                            max={me.cash}
-                            value={moneyToGive}
-                            style={sliderStyle}
-                            onChange={e => setMoneyToGive(parseInt(e.target.value))}
-                        />
-                    </div>
-                    {renderProperties(me, propertiesToGive, (id) => handleToggleProperty(id, propertiesToGive, setPropertiesToGive))}
+        <div style={panelStyle}>
+            {/* "Give" Column */}
+            <div style={columnStyle}>
+                <PlayerCard
+                    player={me}
+                    totalPlayers={order.length} // Use order.length
+                    orderIndex={order.indexOf(me.id)} // Use order.indexOf
+                    layoutScale={0.9}
+                />
+                <div style={{ width: '100%' }}>
+                    <input
+                        type="number"
+                        style={moneyInputStyle}
+                        value={moneyToGive}
+                        onChange={e => setMoneyToGive(Math.min(me.cash, Math.max(0, parseInt(e.target.value) || 0)))}
+                    />
+                    <input
+                        type="range"
+                        min="0"
+                        max={me.cash}
+                        value={moneyToGive}
+                        style={sliderStyle}
+                        onChange={e => setMoneyToGive(parseInt(e.target.value))}
+                    />
                 </div>
+                {renderProperties(me, propertiesToGive, (id) => handleToggleProperty(id, propertiesToGive, setPropertiesToGive))}
+            </div>
 
-                {/* "Get" Column */}
-                <div style={columnStyle}>
-                    <div style={headerStyle}>You Get ({otherPlayer.name})</div>
-                    <div>
-                        <input
-                            type="number"
-                            style={moneyInputStyle}
-                            value={moneyToGet}
-                            onChange={e => setMoneyToGet(Math.min(otherPlayer.cash, Math.max(0, parseInt(e.target.value) || 0)))}
-                        />
-                        <input
-                            type="range"
-                            min="0"
-                            max={otherPlayer.cash}
-                            value={moneyToGet}
-                            style={sliderStyle}
-                            onChange={e => setMoneyToGet(parseInt(e.target.value))}
-                        />
-                    </div>
-                    {renderProperties(otherPlayer, propertiesToGet, (id) => handleToggleProperty(id, propertiesToGet, setPropertiesToGet))}
+            {/* "Get" Column */}
+            <div style={columnStyle}>
+                <PlayerCard
+                    player={otherPlayer}
+                    totalPlayers={order.length} // Use order.length
+                    orderIndex={order.indexOf(otherPlayer.id)} // Use order.indexOf
+                    layoutScale={0.9}
+                />
+                <div style={{ width: '100%' }}>
+                    <input
+                        type="number"
+                        style={moneyInputStyle}
+                        value={moneyToGet}
+                        onChange={e => setMoneyToGet(Math.min(otherPlayer.cash, Math.max(0, parseInt(e.target.value) || 0)))}
+                    />
+                    <input
+                        type="range"
+                        min="0"
+                        max={otherPlayer.cash}
+                        value={moneyToGet}
+                        style={sliderStyle}
+                        onChange={e => setMoneyToGet(parseInt(e.target.value))}
+                    />
                 </div>
+                {renderProperties(otherPlayer, propertiesToGet, (id) => handleToggleProperty(id, propertiesToGet, setPropertiesToGet))}
+            </div>
 
-                <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '10px' }}>
-                    <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Cancel</button>
-                    <button onClick={() => {
-                        send({ type: 'proposeTrade', to: otherPlayerId, moneyToGive, propertiesToGive, moneyToGet, propertiesToGet });
-                        onClose();
-                    }} style={{ padding: '10px 20px', borderRadius: '8px', background: '#22c55e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Propose Trade</button>
-                </div>
+            <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '10px' }}>
+                <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Cancel</button>
+                <button onClick={() => {
+                    send({ type: 'proposeTrade', to: otherPlayerId, moneyToGive, propertiesToGive, moneyToGet, propertiesToGet });
+                    onClose();
+                }} style={{ padding: '10px 20px', borderRadius: '8px', background: '#22c55e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '16px' }}>Propose Trade</button>
             </div>
         </div>
     );
