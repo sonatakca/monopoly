@@ -8,6 +8,13 @@ import GameButtons, { MetallicActionButton } from './GameButtons'
 import MonopolyMoney from './icons/MonopolyMoney'
 import { div } from 'three/examples/jsm/nodes/Nodes.js'
 
+type AuctionData = {
+  active: boolean;
+  propertyId: number;
+  leader: string | null;
+  amount: number;
+  timer: number;
+};
 
 export type AuctionOverlayProps = {
   state?: RoomState | null
@@ -166,7 +173,6 @@ export default function AuctionOverlay({ state, meId, accentColor = '#3b82f6', s
       <div style={panel}>
         <div style={header}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ ...pill, fontWeight: 900 }}>Açık Arttırma!</div>
             {space && (
               <div style={{ ...pill, fontSize: 13 }}>
                 <span style={{ opacity: 0.9 }}>Mülk:</span>

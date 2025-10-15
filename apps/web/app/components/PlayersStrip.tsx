@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import React, { useMemo } from 'react'
 import type { Player } from '@shared/types'
 import PlayerCard from './PlayerCard'
@@ -11,6 +11,7 @@ type Props = {
   activityKey?: number | string
   onCardRectsChange?: (map: Record<string, DOMRect>) => void
   isFullscreen?: boolean
+  onInitiateTrade?: (playerId: string) => void
 }
 
 export default function PlayersStrip({
@@ -20,7 +21,8 @@ export default function PlayersStrip({
   style,
   activityKey,
   onCardRectsChange,
-  isFullscreen
+  isFullscreen,
+  onInitiateTrade
 }: Props) {
   const list = useMemo(() => order.map(id => players[id]).filter(Boolean), [players, order])
 
@@ -50,7 +52,7 @@ export default function PlayersStrip({
 
   const grid: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: `repeat(${SLOTS}, ${colW}px)`, // fixed px columns to center perfectly
+    gridTemplateColumns: `repeat(${SLOTS}, ${colW}px)`,
     justifyContent: 'center',
     alignItems: 'end',
     gap: 0,
@@ -125,6 +127,7 @@ export default function PlayersStrip({
               layoutScale={layoutScale}   // ← wired scale
               designWidthPx={DESIGN_CARD_W}
               totalPlayers={list.length}
+              onInitiateTrade={onInitiateTrade}
             />
           ) : null}
         </div>

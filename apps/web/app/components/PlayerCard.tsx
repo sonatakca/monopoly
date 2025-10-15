@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import MonopolyMoney from './icons/MonopolyMoney'
 import { SET_COLORS, NEUTRAL, STATION_COLOR, UTILITY_COLOR, PLAYER_DOTS } from './playerColors'
@@ -20,6 +20,7 @@ type Props = {
   /** The unscaled “design” width this card is authored for (default 240) */
   designWidthPx?: number
   totalPlayers: number
+  onInitiateTrade?: (playerId: string) => void
 }
 
 function Money({ value }: { value: number }) {
@@ -64,7 +65,8 @@ export default function PlayerCard({
   isFullscreen,
   layoutScale = 1,
   designWidthPx = 240,
-  totalPlayers
+  totalPlayers,
+  onInitiateTrade
 }: Props) {
   const owned = useMemo(() => new Set<number>(player.properties || []), [player.properties])
   const dot = PLAYER_DOTS[(orderIndex || 0) % PLAYER_DOTS.length]
@@ -340,7 +342,7 @@ export default function PlayerCard({
               borderRadius: 2,
               background: bg,
               opacity,
-              border: '1px solid rgba(0,0,0,0.65)',
+              border: ownedByMe ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.65)',
               position: 'relative',
               cursor: 'pointer',
             }
@@ -356,7 +358,7 @@ export default function PlayerCard({
                 arrow={false}
                 appendTo={() => document.querySelector('#game') || document.body}
                 theme="custom">
-                <div key={id} style={chip}>
+                <div key={id} style={chip} onClick={() => onInitiateTrade && onInitiateTrade(player.id)}>
                   {mort && (
                     <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 3px)' }} />
                   )}

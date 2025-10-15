@@ -17,7 +17,15 @@ import { DEFAULT_TOKEN_GAPS_Y, DEFAULT_TOKEN_SCALES } from '@shared/tokens'
 import { DEFAULT_TOKEN_ROTATION } from '@shared/tokenRotation'
 import HopAnimator, { type HopStep } from './HopAnimator'
 import bakedHouseZonesRaw from '../../public/baked-in-content/house-hotel-zones.json';
-
+import BuyHouseIcon from './icons/BuyHouseIcon.svg';
+import SellHouseIcon from './icons/SellHouseIcon.svg';
+import BuyHotelIcon from './icons/BuyHotelIcon.svg';
+import SellHotelIcon from './icons/SellHotelIcon.svg';
+import Tippy from '@tippyjs/react'
+import 'tippy.js/dist/tippy.css';
+import { followCursor } from 'tippy.js';
+import { TbCards } from "react-icons/tb";
+import MortgageIcon from './icons/MortgageIcon.png';
 
 
 type Lighting = {
@@ -169,6 +177,17 @@ type Props = {
     showHud?: boolean
     /** Fullscreen state to scale HUD elements appropriately */
     isFullscreen?: boolean
+    onToggleFullscreen?: () => void;
+    onInitiateTrade?: (playerId: string) => void;
+    onOpenTradeModal?: () => void;
+    tradeActive?: boolean;
+    tradePlayerIds?: (string | null)[];
+    onBuyHouse?: () => void;
+    onSellHouse?: () => void;
+    onBuyHotel?: () => void;
+    onSellHotel?: () => void;
+    onMortgage?: () => void;
+    onOptions?: () => void;
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -1884,6 +1903,17 @@ function Board3D({
     onCardRectsChange,
     showHud,
     isFullscreen,
+    onToggleFullscreen,
+    onInitiateTrade,
+    onOpenTradeModal,
+    tradeActive,
+    tradePlayerIds,
+    onBuyHouse,
+    onSellHouse,
+    onBuyHotel,
+    onSellHotel,
+    onMortgage,
+    onOptions,
 }: Props) {
 
     const [, forceUpdate] = useState(0);
@@ -3158,6 +3188,310 @@ function Board3D({
                 )}                {/* Extra scene content (e.g., animated dice) */}
                 {children}
             </Canvas>
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    top: 27,
+                    right: 27,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={isFullscreen ? 'Tam Ekrandan Çık' : 'Tam Ekran'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={isFullscreen ? [-70, -50] : [65, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button id='fullscreenButton' className={'no-style modernButton'} onClick={onToggleFullscreen}>
+                        {!isFullscreen ?
+                            <svg viewBox="0 0 24 24">
+                                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 
+            7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                            </svg>
+                            : <svg viewBox="0 0 24 24">
+                                <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 
+            11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+                            </svg>}
+                    </button>
+                </Tippy>
+
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    top: 27,
+                    left: 30,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: 40,
+                    height: 40,
+
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'Seçenekler'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={[70, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button id='optionsButton' className={'no-style modernButton'}>
+                        <svg viewBox="0 0 24 24">
+
+                            <path d="M10 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z" />
+                        </svg>
+
+                    </button>
+                </Tippy>
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    top: isFullscreen ? 75 * 1.2 : 75,
+                    left: isFullscreen ? 30 * 0.7 : 30,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: isFullscreen ? 40 * 1.5 : 40,
+                    height: isFullscreen ? 40 * 1.5 : 40,
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'Ev Al'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={[50, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button className={'no-style modernButton'} style={{
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+                    }}>
+                        <img src={BuyHouseIcon.src} alt="Ev Al" className="icon" style={{
+                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                        }} />
+                    </button>
+                </Tippy>
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    // top: 108,
+                    // left: 65,
+                    top: isFullscreen ? 123 * 1.3 : 123,
+                    left: isFullscreen ? 30 * 0.7 : 30,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: isFullscreen ? 40 * 1.5 : 40,
+                    height: isFullscreen ? 40 * 1.5 : 40,
+
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'Ev Sat'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={[55, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button className={'no-style modernButton'} style={{
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+                    }}>
+                        <img src={SellHouseIcon.src} alt="Ev Sat" className="icon" style={{
+                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                        }} />
+                    </button>
+                </Tippy>
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    // top: 108,
+                    // left: 65,
+                    top: isFullscreen ? 171 * 1.35 : 171,
+                    left: isFullscreen ? 30 * 0.7 : 30,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: isFullscreen ? 40 * 1.5 : 40,
+                    height: isFullscreen ? 40 * 1.5 : 40,
+
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'Teklif Yap'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={[65, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button
+                        className={'no-style modernButton'}
+                        onClick={onOpenTradeModal}
+                        style={{
+                            width: isFullscreen ? 40 * 1.5 : 40,
+                            height: isFullscreen ? 40 * 1.5 : 40,
+                        }}>
+
+                        <TbCards color='black' size={isFullscreen ? 1.5 * 24 : 24} />
+                    </button>
+                </Tippy>
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    // top: 60,
+                    // right: 12,
+                    top: isFullscreen ? 75 * 1.2 : 75,
+                    right: isFullscreen ? 27 * 0.6 : 27,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: isFullscreen ? 40 * 1.5 : 40,
+                    height: isFullscreen ? 40 * 1.5 : 40,
+
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'Otel Al'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={isFullscreen ? [-40, -50] : [55, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button className={'no-style modernButton'} style={{
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+                    }}>
+                        <img src={BuyHotelIcon.src} alt="Otel Al" className="icon" style={{
+                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                        }} />
+                    </button>
+                </Tippy>
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    // top: 108,
+                    // right: 12,
+                    top: isFullscreen ? 123 * 1.3 : 123,
+                    right: isFullscreen ? 27 * 0.6 : 27,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: isFullscreen ? 40 * 1.5 : 40,
+                    height: isFullscreen ? 40 * 1.5 : 40,
+
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'Otel Sat'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={isFullscreen ? [-40, -50] : [60, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button className={'no-style modernButton'} style={{
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+                    }}>
+                        <img src={SellHotelIcon.src} alt="Otel Sat" className="icon" style={{
+                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                        }} />
+                    </button>
+                </Tippy>
+            </div>
+
+            <div className='modernButtonContainer'
+                style={{
+                    position: 'absolute',
+                    // top: 108,
+                    // right: 12,
+                    top: isFullscreen ? 171 * 1.35 : 171,
+                    right: isFullscreen ? 27 * 0.6 : 27,
+                    zIndex: 60,
+                    pointerEvents: 'auto',
+                    display: 'flex',
+                    gap: 8,
+                    background: 'transparent',
+                    border: '0px solid rgba(255,255,255,0.16)',
+                    borderRadius: '50%',
+                    width: isFullscreen ? 40 * 1.5 : 40,
+                    height: isFullscreen ? 40 * 1.5 : 40,
+
+                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                }}
+            >
+                <Tippy content={'İpotek Yap'}
+                    followCursor={true}
+                    plugins={[followCursor]}
+                    offset={isFullscreen ? [-45, -50] : [70, -50]}
+                    arrow={false}
+                    appendTo={() => document.querySelector('#game') || document.body}
+                    theme="custom">
+                    <button className={'no-style modernButton'} style={{
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+                    }}>
+                        <img
+                            src={MortgageIcon.src}
+                            alt="İpotek Yap"
+                            className="icon"
+                            width={isFullscreen ? 24 * 1.5 : 24}
+                            height={isFullscreen ? 24 * 1.5 : 24}
+                        />
+                    </button>
+                </Tippy>
+            </div>
+
+
             {/* Overlay (2D) children inside the scene container */}
             {overlayChildren && (
                 <div style={{ position: 'absolute', left: 0, right: 0, top: 8, display: 'flex', justifyContent: 'center', zIndex: 30, pointerEvents: 'none' }}>
@@ -3167,7 +3501,7 @@ function Board3D({
             {/* Players strip HUD over the map (hidden until game starts) */}
             {showHud && (
                 <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 12px', zIndex: 25, pointerEvents: 'auto' }}>
-                    <PlayersStrip players={players as any} order={order as any} currentId={currentPlayerId} activityKey={activityKey} onCardRectsChange={onCardRectsChange} isFullscreen={isFullscreen as any} />
+                    <PlayersStrip players={players as any} order={order as any} currentId={currentPlayerId} activityKey={activityKey} onCardRectsChange={onCardRectsChange} isFullscreen={isFullscreen as any} onInitiateTrade={onInitiateTrade} />
                 </div>
             )}
             {/* Fullscreen 3D property card viewer over a blue background */}

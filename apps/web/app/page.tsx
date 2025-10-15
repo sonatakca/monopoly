@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useState, useRef, Suspense, useCallback } from 'react'
-import { socket } from '../lib/socket'
+// import { socket } from '../lib/socket'
+import { useSocketWorker } from './hooks/useSocketWorker';
 import type { ServerEvent, ClientEvent, RoomState, Player } from '@shared/types'
 import Board3D, { type CameraPreset, type PlacementOverrides } from './components/Board3D'
 import PropertyCard from './components/PropertyCard'
@@ -25,15 +26,9 @@ import './preload-assets'
 import { Autour_One } from 'next/font/google'
 import Image from 'next/image'
 import GoToGameButton from './components/GoToGameButton'
-import BuyHouseIcon from './components/icons/BuyHouseIcon.svg';
-import SellHouseIcon from './components/icons/SellHouseIcon.svg';
-import BuyHotelIcon from './components/icons/BuyHotelIcon.svg';
-import SellHotelIcon from './components/icons/SellHotelIcon.svg';
-import Tippy from '@tippyjs/react'
-import 'tippy.js/dist/tippy.css';
-import { followCursor } from 'tippy.js';
-import { TbCards } from "react-icons/tb";
-import MortgageIcon from './components/icons/MortgageIcon.png';
+
+import TradeOverlay from './components/TradeOverlay';
+
 
 
 
@@ -533,9 +528,21 @@ function buildPermanentPlacements(): PlacementOverrides {
 }
 
 export default function Home() {
-  const [state, setState] = useState<RoomState & { ready?: Record<string, boolean>, adminId?: string } | null>(null)
-  const [connected, setConnected] = useState<boolean>(socket.connected)
+
+  const { state, connected, send, meId } = useSocketWorker();
+  // const [state, setState] = useState<RoomState & { ready?: Record<string, boolean>, adminId?: string } | null>(null)
+  // const [connected, setConnected] = useState<boolean>(socket.connected)
   const [err, setErr] = useState<string>('')
+  const [tradeState, setTradeState] = useState<{ isOpen: boolean; otherPlayerId: string | null }>({ isOpen: false, otherPlayerId: null });
+  const [isSelectingTradePlayer, setIsSelectingTradePlayer] = useState(false);
+
+  const openTrade = (otherPlayerId: string) => {
+    setTradeState({ isOpen: true, otherPlayerId });
+  };
+
+  const closeTrade = () => {
+    setTradeState({ isOpen: false, otherPlayerId: null });
+  };
 
   const [name, setName] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -934,42 +941,42 @@ export default function Home() {
   }
 
   // socket
-  useEffect(() => {
-    const onConnect = () => { setConnected(true); setErr('') }
-    const onDisconnect = () => setConnected(false)
-    const onConnectError = (e: any) => { setErr(String(e?.message || e)); setConnected(false) }
+  // useEffect(() => {
+  //   const onConnect = () => { setConnected(true); setErr('') }
+  //   const onDisconnect = () => setConnected(false)
+  //   const onConnectError = (e: any) => { setErr(String(e?.message || e)); setConnected(false) }
 
-    // Batch state updates to one per frame to avoid jank on bursts
-    let raf = 0
-    let pending: any = null
-    const flush = () => {
-      raf = 0
-      if (pending) { setState({ ...(pending as any) }); pending = null }
-    }
+  //   // Batch state updates to one per frame to avoid jank on bursts
+  //   let raf = 0
+  //   let pending: any = null
+  //   const flush = () => {
+  //     raf = 0
+  //     if (pending) { setState({ ...(pending as any) }); pending = null }
+  //   }
 
-    const onEvt = (evt: ServerEvent | any) => {
-      if (evt.type === 'state') {
-        pending = evt.state
-        if (!raf) raf = requestAnimationFrame(flush)
-      }
-      if (evt.type === 'msg') {
-        if (!getDevFlag('suppressMsgs' as any)) console.log('[MSG]', evt.text)
-      }
-      if (evt.type === 'error') alert(evt.text)
-    }
-    if (socket.connected) onConnect()
-    socket.on('connect', onConnect)
-    socket.on('disconnect', onDisconnect)
-    socket.on('connect_error', onConnectError)
-    socket.on('event', onEvt)
-    return () => {
-      if (raf) cancelAnimationFrame(raf)
-      socket.off('connect', onConnect)
-      socket.off('disconnect', onDisconnect)
-      socket.off('connect_error', onConnectError)
-      socket.off('event', onEvt)
-    }
-  }, [])
+  //   const onEvt = (evt: ServerEvent | any) => {
+  //     if (evt.type === 'state') {
+  //       pending = evt.state
+  //       if (!raf) raf = requestAnimationFrame(flush)
+  //     }
+  //     if (evt.type === 'msg') {
+  //       if (!getDevFlag('suppressMsgs' as any)) console.log('[MSG]', evt.text)
+  //     }
+  //     if (evt.type === 'error') alert(evt.text)
+  //   }
+  //   if (socket.connected) onConnect()
+  //   socket.on('connect', onConnect)
+  //   socket.on('disconnect', onDisconnect)
+  //   socket.on('connect_error', onConnectError)
+  //   socket.on('event', onEvt)
+  //   return () => {
+  //     if (raf) cancelAnimationFrame(raf)
+  //     socket.off('connect', onConnect)
+  //     socket.off('disconnect', onDisconnect)
+  //     socket.off('connect_error', onConnectError)
+  //     socket.off('event', onEvt)
+  //   }
+  // }, [])
 
   // persist name
   useEffect(() => {
@@ -979,11 +986,11 @@ export default function Home() {
     return () => clearTimeout(t)
   }, [name])
 
-  function send(e: ClientEvent | any) { socket.emit('event', e) }
+  // function send(e: ClientEvent | any) { socket.emit('event', e) }
 
-  const me = useMemo(() => state && socket.id ? state.players[socket.id] : null, [state])
-  const isMyTurn = !!(state && state.order?.length && state.order[state.turnIndex] === socket.id)
-  const isAdmin = !!(state && (state as any).adminId === socket.id)
+  const me = useMemo(() => state && meId ? state.players[meId] : null, [state, meId]);
+  const isMyTurn = !!(state && state.order?.length && state.order[state.turnIndex] === meId);
+  const isAdmin = !!(state && (state as any).adminId === meId)
   const allReady = !!(state && state.order?.every(id => (state as any).ready?.[id]))
   // Turn controls: allow roll if no dice yet, or doubles rolled; allow end turn if rolled and not doubles
   const canRoll = !!(isMyTurn && (!((state as any)?.lastDice) || ((state as any)?.lastDice?.isDouble === true)))
@@ -1334,12 +1341,12 @@ export default function Home() {
         )}
         {me && (
           <button onClick={() => send({ type: 'readyToggle' } as any)}>
-            {((state as any)?.ready && socket.id && (state as any).ready[socket.id]) ? 'Hazır değilim' : 'Hazırım'}
+            {((state as any)?.ready && meId && (state as any).ready[meId]) ? 'Hazır değilim' : 'Hazırım'}
           </button>
         )}
         {/* Auto-start when all players are ready; no manual admin ordering button */}
         <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>
-          {connected ? `Bağlı (${socket.id})` : 'Bağlantı yok'} {err && `• ${err}`}
+          {connected ? `Bağlı (${meId})` : 'Bağlantı yok'} {err && `• ${err}`}
         </span>
       </section>
       {/* Public rooms */}
@@ -1352,16 +1359,20 @@ export default function Home() {
             const p = state.players[pid]
             if (!p) return null
             const ready = (state as any).ready?.[pid]
-            const isMe = pid === socket.id
+            const isMe = pid === meId
             return (
-              <div key={pid} style={{ padding: 8, border: '1px solid #ddd', borderRadius: 8, width: 260 }}>
-                <b>{p.name}</b>
-                <div style={{ fontSize: 12, opacity: 0.85 }}>{ready ? 'Hazır ✅' : 'Hazır değil ❌'}</div>
+              <div key={pid} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, border: '1px solid #ddd', borderRadius: 8, width: 260 }}>
+                <div>
+                  <b>{p.name}</b>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>{ready ? 'Hazır ✅' : 'Hazır değil ❌'}</div>
+                </div>
                 {isAdmin && !isMe && (
                   <div style={{ marginTop: 6 }}>
                     <button onClick={() => send({ type: 'kick', playerId: pid } as any)}>At</button>
                   </div>
+
                 )}
+
               </div>
             )
           })}
@@ -1406,6 +1417,21 @@ export default function Home() {
               pathDirection="counterclockwise"
               displayOffset={0}
 
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={toggleFullscreen}
+              onOpenTradeModal={() => setIsSelectingTradePlayer(true)}
+              onInitiateTrade={openTrade}
+              tradeActive={tradeState.isOpen}
+              tradePlayerIds={me ? [me.id, tradeState.otherPlayerId] : []}
+
+              //default states
+              onBuyHouse={() => alert('Ev Al tıklandı')}
+              onSellHouse={() => alert('Ev Sat tıklandı')}
+              onBuyHotel={() => alert('Otel Al tıklandı')}
+              onSellHotel={() => alert('Otel Sat tıklandı')}
+              onMortgage={() => alert('İpotek Yap tıklandı')}
+              onOptions={() => alert('Seçenekler tıklandı')}
+
 
 
               routeCompleteDelayMs={500} routeStartDelayMs={state?.lastDice ? 3200 : 0}
@@ -1435,13 +1461,13 @@ export default function Home() {
                 })
               }, [])}
               onTokenRouteStart={(pid) => {
-                if (pid === socket.id) {
+                if (pid === meId) {
                   setAnimatingRoute(true);
                   setAnimatingMyMove(true);           // ΓåÉ add this
                 }
               }}
               onTokenRouteComplete={({ playerId, tileIndex }: { playerId: string; tileIndex: number }) => {
-                if (playerId === socket.id) {
+                if (playerId === meId) {
                   setAnimatingRoute(false);
                   setAnimatingMyMove(false);
                   try { send({ type: 'arrived' } as any); armSuppress(400) } catch { }
@@ -1457,7 +1483,7 @@ export default function Home() {
                     }, 100);
                   }
 
-                  // If we landed on an unowned buyable tile (e.g., via a card move), open buy modal
+                  // If we landed on an unowned buyable tile (e.g., via a card move), open buy.tsx
                   try {
                     const sp: any = (board as any).spaces?.[tileIndex]
                     const ttype = sp?.type
@@ -1477,6 +1503,7 @@ export default function Home() {
 
               showLabels={false}
               showFallbackSpheres={true}
+
             >
               {state?.lastDice && !getDevFlag('disableDice') && (
                 <Suspense fallback={null}
@@ -1496,311 +1523,20 @@ export default function Home() {
                 </Suspense>
               )}
             </Board3D>
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                top: 27,
-                right: 27,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={isFullscreen ? 'Tam Ekrandan Çık' : 'Tam Ekran'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={isFullscreen ? [-70, -50] : [65, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button id='fullscreenButton' className={'no-style modernButton'} onClick={toggleFullscreen}>
-                  {!isFullscreen ?
-                    <svg viewBox="0 0 24 24">
-                      <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 
-            7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-                    </svg>
-                    : <svg viewBox="0 0 24 24">
-                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 
-            11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
-                    </svg>}
-                </button>
-              </Tippy>
 
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                top: 27,
-                left: 30,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: 40,
-                height: 40,
-
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'Seçenekler'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={[70, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button id='optionsButton' className={'no-style modernButton'}>
-                  <svg viewBox="0 0 24 24">
-
-                    <path d="M10 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z" />
-                  </svg>
-
-                </button>
-              </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                top: isFullscreen ? 75 * 1.2 : 75,
-                left: isFullscreen ? 30 * 0.7 : 30,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: isFullscreen ? 40 * 1.5 : 40,
-                height: isFullscreen ? 40 * 1.5 : 40,
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'Ev Al'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={[50, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button className={'no-style modernButton'} style={{
-                  width: isFullscreen ? 40 * 1.5 : 40,
-                  height: isFullscreen ? 40 * 1.5 : 40,
-                }}>
-                  <img src={BuyHouseIcon.src} alt="Ev Al" className="icon" style={{
-                    width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                  }} />
-                </button>
-              </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                // top: 108,
-                // left: 65,
-                top: isFullscreen ? 123 * 1.3 : 123,
-                left: isFullscreen ? 30 * 0.7 : 30,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: isFullscreen ? 40 * 1.5 : 40,
-                height: isFullscreen ? 40 * 1.5 : 40,
-
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'Ev Sat'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={[55, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button className={'no-style modernButton'} style={{
-                  width: isFullscreen ? 40 * 1.5 : 40,
-                  height: isFullscreen ? 40 * 1.5 : 40,
-                }}>
-                  <img src={SellHouseIcon.src} alt="Ev Sat" className="icon" style={{
-                    width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                  }} />
-                </button>
-              </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                // top: 108,
-                // left: 65,
-                top: isFullscreen ? 171 * 1.35 : 171,
-                left: isFullscreen ? 30 * 0.7 : 30,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: isFullscreen ? 40 * 1.5 : 40,
-                height: isFullscreen ? 40 * 1.5 : 40,
-
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'Teklif Yap'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={[65, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button className={'no-style modernButton'} style={{
-                  width: isFullscreen ? 40 * 1.5 : 40,
-                  height: isFullscreen ? 40 * 1.5 : 40,
-                }}>
-                  <TbCards color='black' size={isFullscreen ? 1.5 * 24 : 24} />
-                </button>
-              </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                // top: 60,
-                // right: 12,
-                top: isFullscreen ? 75 * 1.2 : 75,
-                right: isFullscreen ? 27 * 0.6 : 27,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: isFullscreen ? 40 * 1.5 : 40,
-                height: isFullscreen ? 40 * 1.5 : 40,
-
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'Otel Al'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={isFullscreen ? [-40, -50] : [55, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button className={'no-style modernButton'} style={{
-                  width: isFullscreen ? 40 * 1.5 : 40,
-                  height: isFullscreen ? 40 * 1.5 : 40,
-                }}>
-                  <img src={BuyHotelIcon.src} alt="Otel Al" className="icon" style={{
-                    width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                  }} />
-                </button>
-              </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                // top: 108,
-                // right: 12,
-                top: isFullscreen ? 123 * 1.3 : 123,
-                right: isFullscreen ? 27 * 0.6 : 27,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: isFullscreen ? 40 * 1.5 : 40,
-                height: isFullscreen ? 40 * 1.5 : 40,
-
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'Otel Sat'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={isFullscreen ? [-40, -50] : [60, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button className={'no-style modernButton'} style={{
-                  width: isFullscreen ? 40 * 1.5 : 40,
-                  height: isFullscreen ? 40 * 1.5 : 40,
-                }}>
-                  <img src={SellHotelIcon.src} alt="Otel Sat" className="icon" style={{
-                    width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                  }} />
-                </button>
-              </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-              style={{
-                position: 'absolute',
-                // top: 108,
-                // right: 12,
-                top: isFullscreen ? 171 * 1.35 : 171,
-                right: isFullscreen ? 27 * 0.6 : 27,
-                zIndex: 60,
-                pointerEvents: 'auto',
-                display: 'flex',
-                gap: 8,
-                background: 'transparent',
-                border: '0px solid rgba(255,255,255,0.16)',
-                borderRadius: '50%',
-                width: isFullscreen ? 40 * 1.5 : 40,
-                height: isFullscreen ? 40 * 1.5 : 40,
-
-                backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-              }}
-            >
-              <Tippy content={'İpotek Yap'}
-                followCursor={true}
-                plugins={[followCursor]}
-                offset={isFullscreen ? [-45, -50] : [70, -50]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <button className={'no-style modernButton'} style={{
-                  width: isFullscreen ? 40 * 1.5 : 40,
-                  height: isFullscreen ? 40 * 1.5 : 40,
-                }}>
-                  <img
-                    src={MortgageIcon.src}
-                    alt="İpotek Yap"
-                    className="icon"
-                    width={isFullscreen ? 24 * 1.5 : 24}
-                    height={isFullscreen ? 24 * 1.5 : 24}
-                  />
-                </button>
-              </Tippy>
-            </div>
 
 
 
             {/* Money animations overlay */}
             <MoneyFx ref={moneyFxRef as any} cardRects={cardRects} />
             {/* Auction overlay */}
-            <AuctionOverlay state={state as any} meId={socket?.id || null} accentColor={currentAccent} send={send} isFullscreen={isFullscreen} />
+            <AuctionOverlay
+              state={state as any}
+              meId={meId} // Use meId here
+              accentColor={currentAccent}
+              send={send}
+              isFullscreen={isFullscreen}
+            />
             {/* Pending action card: show after any hop completes */}
             {pendingCard && !anyAnimatingRoute && (() => {
               try {
@@ -2168,7 +1904,78 @@ export default function Home() {
           </>
         )}
       </div>
-      {/* Legacy game action buttons removed for order-based flow */}
+
+      {isSelectingTradePlayer && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center' }}>
+          <div style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(350px, 90vw)',
+            borderRadius: 16,
+            boxShadow: '0 18px 80px rgba(0,0,0,0.5)',
+            background: 'rgba(40,40,40,0.85)',
+            backdropFilter: 'blur(10px)',
+            color: '#fff',
+            zIndex: 101,
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px'
+          }}>
+            <h2 style={{ textAlign: 'center', margin: 0, fontSize: '20px' }}>Kiminle takas yapmak istersin?</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {state?.order.filter(pid => pid !== meId).map(pid => (
+                <button
+                  key={pid}
+                  onClick={() => {
+                    openTrade(pid);
+                    setIsSelectingTradePlayer(false);
+                  }}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.1)',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    textAlign: 'left'
+                  }}
+                >
+                  {state.players[pid]?.name || 'Unknown Player'}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setIsSelectingTradePlayer(false)}
+              style={{
+                marginTop: '10px',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                background: '#ef4444',
+                color: '#fff',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '16px'
+              }}
+            >
+              İptal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tradeState.isOpen && (
+        <TradeOverlay
+          state={state as any}
+          meId={meId} // Use meId here
+          otherPlayerId={tradeState.otherPlayerId}
+          send={send}
+          onClose={closeTrade}
+        />
+      )}
     </main >
   )
 }

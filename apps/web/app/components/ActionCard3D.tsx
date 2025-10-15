@@ -35,6 +35,11 @@ export default function ActionCard3D({
   const frontMap = useLoader(THREE.TextureLoader, frontUrl)
   const backMap = useLoader(THREE.TextureLoader, backUrl)
 
+  useMemo(() => {
+    if (frontMap) frontMap.colorSpace = THREE.SRGBColorSpace;
+    if (backMap) backMap.colorSpace = THREE.SRGBColorSpace;
+  }, [frontMap, backMap]);
+
   // Increase texture quality a bit on supported GPUs
   const maxAniso = THREE.MathUtils.clamp((THREE as any).WebGLRenderer ? 8 : 16, 1, 16)
   frontMap.anisotropy = Math.max(frontMap.anisotropy, maxAniso)
