@@ -74,6 +74,16 @@ export type Player = {
   hotels: Record<number, 0|1>
 }
 
+export type TradeProposal = {
+  id: string
+  from: string
+  to: string
+  moneyToGive: number
+  propertiesToGive: number[]
+  moneyToGet: number
+  propertiesToGet: number[]
+}
+
 export type DeckCard =
   | { id: string; kind: 'money'; amount: number; text: string }
   | { id: string; kind: 'move'; to: number; passGo?: boolean; text: string }
@@ -144,9 +154,12 @@ export type ClientEvent =
   | { type: 'continueCard' }
   // Client signals movement animation finished; server applies landOn now
   | { type: 'arrived' }
+  // Trading (lightweight UI broadcast via server)
+  | { type: 'proposeTrade'; proposal: TradeProposal }
 
 export type ServerEvent =
   | { type: 'state'; state: RoomState }
   | { type: 'msg'; text: string }
   | { type: 'error'; text: string }
-
+  // Trading (broadcast to all clients in room)
+  | { type: 'tradeProposal'; proposal: TradeProposal }

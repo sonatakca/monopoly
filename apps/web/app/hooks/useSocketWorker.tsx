@@ -28,8 +28,14 @@ export const useSocketWorker = () => {
             } else if (type === 'disconnect') {
                 setConnected(false);
                 setMeId(null);
-            } else if (type === 'event' && payload.type === 'state') {
-                setState(payload.state);
+            } else if (type === 'event') {
+                if (payload.type === 'state') {
+                    setState(payload.state);
+                } else if (payload.type === 'tradeProposal') {
+                    try { window.dispatchEvent(new CustomEvent('monopoly:tradeProposal', { detail: payload.proposal })) } catch {}
+                } else {
+                    // no-op: other server events are not handled yet
+                }
             }
         };
 

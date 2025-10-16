@@ -23,6 +23,8 @@ type Props = {
   onInitiateTrade?: (playerId: string) => void
   // context?: string;
   hideProperties?: boolean
+  /** If true, freeze the timer animation (e.g., during hops/auction/buy modal) */
+  timerFrozen?: boolean
 }
 
 function Money({ value }: { value: number }) {
@@ -71,6 +73,7 @@ export default function PlayerCard({
   onInitiateTrade,
   // context,
   hideProperties = false,
+  timerFrozen = false,
 }: Props) {
 
   // useEffect(() => {
@@ -90,30 +93,42 @@ export default function PlayerCard({
   const pillFillRef = useRef<HTMLDivElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const startRef = useRef<number | null>(null)
+  const pauseAccumRef = useRef<number>(0)
+  const pauseSinceRef = useRef<number | null>(null)
+  const prevFrozenRef = useRef<boolean>(false)
 
   // Money delta indicator (+ green / - red)
   const lastCashRef = useRef<number | null>(null)
   const [cashDelta, setCashDelta] = useState<number | null>(null)
   const deltaTimer = useRef<number | null>(null)
 
+  // Reset and start the 30s timer whenever current player changes or activityKey advances
   useEffect(() => {
     if (!isCurrent) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
       startRef.current = null
+      pauseAccumRef.current = 0
+      pauseSinceRef.current = null
+      prevFrozenRef.current = timerFrozen
       if (barRef.current) barRef.current.style.transform = 'scaleX(1)'
       if (pillFillRef.current) pillFillRef.current.style.transform = 'scaleX(1)'
       return
     }
 
     startRef.current = performance.now()
+    pauseAccumRef.current = 0
+    pauseSinceRef.current = timerFrozen ? performance.now() : null
+    prevFrozenRef.current = timerFrozen
+
     const duration = 30000
     const startFrac = 0.68
     const endFrac = 0.315
 
     const tick = (now: number) => {
       if (!startRef.current) return
-      const elapsed = now - startRef.current
+      const paused = (pauseAccumRef.current || 0) + (timerFrozen && pauseSinceRef.current ? (now - pauseSinceRef.current) : 0)
+      const elapsed = Math.max(0, now - startRef.current - paused)
       const remaining = Math.max(0, duration - elapsed)
       const p = remaining / duration
       const barScale = Math.max(0, Math.min(1, p))
@@ -131,7 +146,23 @@ export default function PlayerCard({
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-  }, [isCurrent, player?.id, activityKey])
+  }, [isCurrent, player?.id, activityKey, timerFrozen])
+
+  // Track freeze transitions to accumulate paused time precisely
+  useEffect(() => {
+    if (!isCurrent) return
+    const was = prevFrozenRef.current
+    const nowF = timerFrozen
+    if (nowF && !was) {
+      pauseSinceRef.current = performance.now()
+    } else if (!nowF && was) {
+      if (pauseSinceRef.current != null) {
+        pauseAccumRef.current += (performance.now() - pauseSinceRef.current)
+        pauseSinceRef.current = null
+      }
+    }
+    prevFrozenRef.current = nowF
+  }, [timerFrozen, isCurrent])
 
   // Show a transient money delta when player.cash changes
   useEffect(() => {

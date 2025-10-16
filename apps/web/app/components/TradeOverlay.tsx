@@ -314,7 +314,7 @@ export default function TradeOverlay({
                         />
                     )}
                     {rightIds.length > 0 && (
-                        <HiArrowSmRight
+                        <HiArrowSmLeft
                             size={34}
                             color="rgba(255,255,255,0.95)"
                             style={{ transform: 'translateY(6px)' }} // a little lower for right
@@ -445,17 +445,17 @@ export default function TradeOverlay({
                         onClick={() => {
                             const proposal = {
                                 id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                                from: meId,
-                                to: otherPlayerId,
+                                from: meId as string,
+                                to: otherPlayerId as string,
                                 moneyToGive,
                                 propertiesToGive,
                                 moneyToGet,
                                 propertiesToGet
                             };
-                            // Send to server (no-op if unsupported)
-                            send({ type: 'proposeTrade', ...proposal });
-                            // Dispatch a local browser event so page can show a proposal overlay
-                            try { window.dispatchEvent(new CustomEvent('monopoly:tradeProposal', { detail: proposal })) } catch {}
+                            // Send to server (broadcast to room)
+                            send({ type: 'proposeTrade', proposal });
+                            // Local fallback (same-tab preview)
+                            try { window.dispatchEvent(new CustomEvent('monopoly:tradeProposal', { detail: proposal })) } catch { }
                             onClose();
                         }}
                         accentColor={myColor}

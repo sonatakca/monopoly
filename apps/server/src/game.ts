@@ -1,6 +1,6 @@
 import type {
   Board, BoardSpace, Player, RoomState, ClientEvent, ServerEvent,
-  Property, Station, Utility, DeckCard
+  Property, Station, Utility, DeckCard, TradeProposal
 } from '../../../packages/shared/types.js'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
@@ -702,6 +702,27 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
       break
     }
 
+    // --- Trading (UI broadcast only; not authoritative transfers) ---
+    case 'proposeTrade': {
+      try {
+        const raw = (evt as any).proposal || {}
+        const to = String(raw.to || '')
+        if (!to) break
+        const proposal: TradeProposal = {
+          id: String(raw.id || crypto.randomBytes(6).toString('hex')),
+          from: playerId,
+          to,
+          moneyToGive: Math.max(0, Number(raw.moneyToGive || 0)),
+          propertiesToGive: Array.isArray(raw.propertiesToGive) ? raw.propertiesToGive.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [],
+          moneyToGet: Math.max(0, Number(raw.moneyToGet || 0)),
+          propertiesToGet: Array.isArray(raw.propertiesToGet) ? raw.propertiesToGet.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [],
+        }
+        out.push({ type: 'tradeProposal', proposal })
+        log.push(`${(state as any).players[playerId]?.name || 'Oyuncu'} bir takas teklifi gönderdi.`)
+      } catch {}
+      break
+    }
+
     // Client signals arrival: resolve the space effects now
     case 'arrived': {
       const pv = (state as any).pendingVisit
@@ -724,7 +745,5 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
   out.push({ type: 'state', state })
   return out
 }
-
-
 
 

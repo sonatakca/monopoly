@@ -12,6 +12,7 @@ type Props = {
   onCardRectsChange?: (map: Record<string, DOMRect>) => void
   isFullscreen?: boolean
   onInitiateTrade?: (playerId: string) => void
+  timerFrozen?: boolean
 }
 
 export default function PlayersStrip({
@@ -22,7 +23,8 @@ export default function PlayersStrip({
   activityKey,
   onCardRectsChange,
   isFullscreen,
-  onInitiateTrade
+  onInitiateTrade,
+  timerFrozen
 }: Props) {
   const list = useMemo(() => order.map(id => players[id]).filter(Boolean), [players, order])
 
@@ -124,6 +126,7 @@ export default function PlayersStrip({
               isCurrent={currentId ? p.id === currentId : false}
               activityKey={currentId && p.id === currentId ? activityKey : undefined}
               isFullscreen={isFullscreen}
+              timerFrozen={timerFrozen}
               layoutScale={layoutScale}   // ← wired scale
               designWidthPx={DESIGN_CARD_W}
               totalPlayers={list.length}

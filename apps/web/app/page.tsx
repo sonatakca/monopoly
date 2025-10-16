@@ -539,6 +539,10 @@ export default function Home() {
   const [tradeProposal, setTradeProposal] = useState<TradeProposal | null>(null);
   const [tradePrefill, setTradePrefill] = useState<{ moneyToGive: number; moneyToGet: number; propertiesToGive: number[]; propertiesToGet: number[] } | null>(null);
   const [localPlayersOverride, setLocalPlayersOverride] = useState<Record<string, Player> | null>(null);
+  // Proposal window: 30s total countdown across proposals for the current turn
+  const TRADE_PROPOSAL_WINDOW_MS = 30_000;
+  const [tradeProposalExpireAt, setTradeProposalExpireAt] = useState<number | null>(null);
+  const lastProposalTurnRef = useRef<number | null>(null);
 
   const openTrade = (otherPlayerId: string) => {
     setTradeState({ isOpen: true, otherPlayerId });
@@ -568,10 +572,36 @@ export default function Home() {
       const p: TradeProposal | undefined = e?.detail
       if (!p) return
       if (p.to && p.to === meId) setTradeProposal(p)
+      // Start proposal window (30s total) once per turn; do not reset on subsequent proposals
+      const curTurn = state?.turnIndex ?? null
+      if (curTurn != null) {
+        if (lastProposalTurnRef.current !== curTurn) {
+          lastProposalTurnRef.current = curTurn
+          setTradeProposalExpireAt(Date.now() + TRADE_PROPOSAL_WINDOW_MS)
+        } else if (tradeProposalExpireAt == null) {
+          // If somehow cleared, re-arm but never extend beyond first start
+          setTradeProposalExpireAt(Date.now() + TRADE_PROPOSAL_WINDOW_MS)
+        }
+      } else if (tradeProposalExpireAt == null) {
+        setTradeProposalExpireAt(Date.now() + TRADE_PROPOSAL_WINDOW_MS)
+      }
     }
     window.addEventListener('monopoly:tradeProposal', onProposal as any)
     return () => window.removeEventListener('monopoly:tradeProposal', onProposal as any)
-  }, [meId])
+  }, [meId, state?.turnIndex, tradeProposalExpireAt])
+  // Auto-close proposal overlay on expiry; do not reset when new proposals arrive in same turn
+  useEffect(() => {
+    if (!tradeProposalExpireAt) return
+    const ms = Math.max(0, tradeProposalExpireAt - Date.now())
+    if (ms === 0) { setTradeProposal(null); return }
+    const t = window.setTimeout(() => { setTradeProposal(null) }, ms)
+    return () => window.clearTimeout(t)
+  }, [tradeProposalExpireAt, tradeProposal])
+  // Reset proposal window when turn advances
+  useEffect(() => {
+    lastProposalTurnRef.current = state?.turnIndex ?? null
+    setTradeProposalExpireAt(null)
+  }, [state?.turnIndex])
   // Clear any local override when fresh server state arrives
   useEffect(() => { if (state) setLocalPlayersOverride(null) }, [state])
 
@@ -1233,6 +1263,18 @@ export default function Home() {
     if (pendingTs && pendingFor && pendingFor === currentId) setActivityTick((t) => t + 1)
   }, [pendingTs, pendingFor, currentId])
 
+  // Also reset the 30s timer when a pending action card is cleared (auto-continued or user-continued)
+  const prevHasPendingRef = useRef<boolean>(false)
+  useEffect(() => {
+    const cur = !!((state as any)?.pendingCard)
+    const prev = prevHasPendingRef.current
+    if (prev && !cur) {
+      // Pending card just cleared; bump activity to restart the player card timer
+      setActivityTick((t) => t + 1)
+    }
+    prevHasPendingRef.current = cur
+  }, [(state as any)?.pendingCard])
+
   // Detect cash changes and trigger money animations (deferred until actions complete)
   const hasPendingCard = !!((state as any)?.pendingCard)
   useEffect(() => {
@@ -1555,6 +1597,7 @@ export default function Home() {
               currentPlayerId={state?.order?.[state?.turnIndex ?? 0]}
               activityKey={activityTick}
               showHud={!!state?.started}
+              timerFrozen={!!(anyAnimatingRoute || buyModal || ((state as any)?.auction?.active))}
               overlayChildren={state?.lastDice && !getDevFlag('disableDice') ? (
                 <DiceSlots
                   d1={state.lastDice.d1 as 1 | 2 | 3 | 4 | 5 | 6}
@@ -2088,9 +2131,6 @@ export default function Home() {
     </main >
   )
 }
-
-
-
 
 
 

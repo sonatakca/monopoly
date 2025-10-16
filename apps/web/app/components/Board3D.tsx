@@ -197,6 +197,8 @@ type Props = {
     tradeState?: { isOpen: boolean; otherPlayerId: string | null };
     send?: (e: any) => void;
     closeTrade?: () => void;
+    /** Freeze current player's timer bar (e.g., during animations/auctions) */
+    timerFrozen?: boolean;
     // Optional prefill values for TradeOverlay (e.g., from counter-offer)
     tradeInitialMoneyToGive?: number;
     tradeInitialMoneyToGet?: number;
@@ -1939,7 +1941,8 @@ function Board3D({
     tradeInitialMoneyToGive,
     tradeInitialMoneyToGet,
     tradeInitialPropertiesToGive,
-    tradeInitialPropertiesToGet
+    tradeInitialPropertiesToGet,
+    timerFrozen
 
 }: Props) {
 
@@ -3623,7 +3626,9 @@ function Board3D({
                         activityKey={activityKey}
                         onCardRectsChange={onCardRectsChange}
                         isFullscreen={isFullscreen as any}
-                        onInitiateTrade={onInitiateTrade} />
+                        onInitiateTrade={onInitiateTrade}
+                        timerFrozen={timerFrozen}
+                    />
                 </div>
             )}
             {/* Fullscreen 3D property card viewer over a blue background */}
@@ -3635,9 +3640,6 @@ function Board3D({
 }
 
 export default Board3D
-
-
-
 
 
 

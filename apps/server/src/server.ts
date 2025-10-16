@@ -61,10 +61,11 @@ function scheduleTurnTimer(rid: string) {
   clearTurnTimer(rid)
   const at = Date.now()
   timerMeta[rid] = { at, forId: curId }
-  turnTimers[rid] = setTimeout(() => autoPass(rid, at, curId), 30_000)
+  // Auto-roll dice if player does nothing for 30s at the start of their turn
+  turnTimers[rid] = setTimeout(() => autoRoll(rid, at, curId), 30_000)
 }
 
-function autoPass(rid: string, at: number, forId: string) {
+function autoRoll(rid: string, at: number, forId: string) {
   const meta = timerMeta[rid]
   const state = rooms[rid] as any
   if (!meta || !state) return
@@ -73,16 +74,17 @@ function autoPass(rid: string, at: number, forId: string) {
   if (!state.started) return
   const curId = state.order?.[state.turnIndex]
   if (curId !== forId) return
-  // If player has taken any action since scheduling, don't pass
+  // If player has taken any action since scheduling, don't auto-roll
   if ((lastActionAt[rid] || 0) > at) return
-  // If dice were rolled, consider as action (no auto-pass)
+  // If dice were already rolled, no need to auto-roll
   if (state.lastDice) return
   try {
-    const replies = reducer(state, curId, { type: 'endTurn' } as any)
+    const replies = reducer(state, curId, { type: 'roll' } as any)
     for (const r of replies) io.to(rid).emit('event', r)
   } finally {
-    // Schedule for next player's turn (if still in play)
+    // After rolling, consider scheduling an after-roll auto end-turn timer
     scheduleTurnTimer(rid)
+    scheduleAfterRollTimer(rid)
   }
 }
 
@@ -154,6 +156,8 @@ io.on('connection', (socket) => {
     scheduleTurnTimer(roomId)
     // And schedule/clear auto-continue for pending cards
     scheduleCardTimer(roomId)
+    // And manage post-roll auto end-turn timer
+    scheduleAfterRollTimer(roomId)
   })
 
   socket.on('disconnect', () => {
@@ -171,6 +175,7 @@ io.on('connection', (socket) => {
       // If we removed someone who was up next/current, re-evaluate timer
       scheduleTurnTimer(roomId)
       scheduleCardTimer(roomId)
+      scheduleAfterRollTimer(roomId)
     }
   })
 })
@@ -193,6 +198,38 @@ function scheduleCardTimer(rid: string) {
   cardTimers[rid] = setTimeout(() => {
     try {
       const replies = reducer(state, pending.playerId, { type: 'continueCard' } as any)
+      for (const r of replies) io.to(rid).emit('event', r)
+    } catch {}
+  }, 30_000)
+}
+
+// --- After-roll auto end-turn timers -------------------------------------
+const afterRollTimers: Record<string, NodeJS.Timeout | null> = {}
+function clearAfterRollTimer(rid: string) {
+  if (afterRollTimers[rid]) { clearTimeout(afterRollTimers[rid]!); afterRollTimers[rid] = null }
+}
+function scheduleAfterRollTimer(rid: string) {
+  const state: any = rooms[rid]
+  clearAfterRollTimer(rid)
+  if (!state?.started) return
+  const curId = state.order?.[state.turnIndex]
+  if (!curId) return
+  // Only schedule if dice have been rolled and it's a non-double turn,
+  // and there are no blocking overlays (pending visit/card, auction)
+  const d = state.lastDice
+  if (!d || d.isDouble) return
+  if (state.pendingVisit || state.pendingCard || (state.auction && state.auction.active)) return
+  afterRollTimers[rid] = setTimeout(() => {
+    try {
+      // Re-check conditions
+      const st: any = rooms[rid]
+      if (!st?.started) return
+      const nowCur = st.order?.[st.turnIndex]
+      if (nowCur !== curId) return
+      const dx = st.lastDice
+      if (!dx || dx.isDouble) return
+      if (st.pendingVisit || st.pendingCard || (st.auction && st.auction.active)) return
+      const replies = reducer(st, nowCur, { type: 'endTurn' } as any)
       for (const r of replies) io.to(rid).emit('event', r)
     } catch {}
   }, 30_000)
