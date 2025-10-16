@@ -21,6 +21,11 @@ export type TradeOverlayProps = {
     send: (e: any) => void;
     onClose: () => void;
     isFullscreen?: boolean;
+    // Optional initial values to prefill when opening (e.g., from a counter-offer)
+    initialMoneyToGive?: number;
+    initialMoneyToGet?: number;
+    initialPropertiesToGive?: number[];
+    initialPropertiesToGet?: number[];
 };
 
 export default function TradeOverlay({
@@ -30,7 +35,11 @@ export default function TradeOverlay({
     otherPlayerId,
     send,
     onClose,
-    isFullscreen
+    isFullscreen,
+    initialMoneyToGive,
+    initialMoneyToGet,
+    initialPropertiesToGive,
+    initialPropertiesToGet,
 }: TradeOverlayProps) {
     if (!players || !order || !meId || !otherPlayerId) return null;
 
@@ -56,10 +65,16 @@ export default function TradeOverlay({
     const otherPlayerSlotIndex = playerIdToSlotIndexMap.get(otherPlayer.id) ?? 0;
     const otherPlayerColor = PLAYER_DOTS[otherPlayerSlotIndex % PLAYER_DOTS.length];
 
-    const [moneyToGive, setMoneyToGive] = useState(0);
-    const [moneyToGet, setMoneyToGet] = useState(0);
-    const [propertiesToGive, setPropertiesToGive] = useState<number[]>([]);
-    const [propertiesToGet, setPropertiesToGet] = useState<number[]>([]);
+    const [moneyToGive, setMoneyToGive] = useState(initialMoneyToGive ?? 0);
+    const [moneyToGet, setMoneyToGet] = useState(initialMoneyToGet ?? 0);
+    const [propertiesToGive, setPropertiesToGive] = useState<number[]>(initialPropertiesToGive ?? []);
+    const [propertiesToGet, setPropertiesToGet] = useState<number[]>(initialPropertiesToGet ?? []);
+
+    // Update when new initial values are provided (e.g., via counter-offer prefill)
+    useEffect(() => { setMoneyToGive(initialMoneyToGive ?? 0) }, [initialMoneyToGive]);
+    useEffect(() => { setMoneyToGet(initialMoneyToGet ?? 0) }, [initialMoneyToGet]);
+    useEffect(() => { setPropertiesToGive(initialPropertiesToGive ?? []) }, [initialPropertiesToGive]);
+    useEffect(() => { setPropertiesToGet(initialPropertiesToGet ?? []) }, [initialPropertiesToGet]);
 
     useEffect(() => {
         setMoneyToGive(0);
@@ -428,14 +443,19 @@ export default function TradeOverlay({
                         label="Teklif Et"
                         icon={<Check size={18} />}
                         onClick={() => {
-                            send({
-                                type: 'proposeTrade',
+                            const proposal = {
+                                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                                from: meId,
                                 to: otherPlayerId,
                                 moneyToGive,
                                 propertiesToGive,
                                 moneyToGet,
                                 propertiesToGet
-                            });
+                            };
+                            // Send to server (no-op if unsupported)
+                            send({ type: 'proposeTrade', ...proposal });
+                            // Dispatch a local browser event so page can show a proposal overlay
+                            try { window.dispatchEvent(new CustomEvent('monopoly:tradeProposal', { detail: proposal })) } catch {}
                             onClose();
                         }}
                         accentColor={myColor}

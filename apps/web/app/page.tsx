@@ -28,6 +28,7 @@ import Image from 'next/image'
 import GoToGameButton from './components/GoToGameButton'
 
 import TradeOverlay from './components/TradeOverlay';
+import TradeProposalOverlay, { type TradeProposal } from './components/TradeProposalOverlay';
 
 
 
@@ -535,6 +536,9 @@ export default function Home() {
   const [err, setErr] = useState<string>('')
   const [tradeState, setTradeState] = useState<{ isOpen: boolean; otherPlayerId: string | null }>({ isOpen: false, otherPlayerId: null });
   const [isSelectingTradePlayer, setIsSelectingTradePlayer] = useState(false);
+  const [tradeProposal, setTradeProposal] = useState<TradeProposal | null>(null);
+  const [tradePrefill, setTradePrefill] = useState<{ moneyToGive: number; moneyToGet: number; propertiesToGive: number[]; propertiesToGet: number[] } | null>(null);
+  const [localPlayersOverride, setLocalPlayersOverride] = useState<Record<string, Player> | null>(null);
 
   const openTrade = (otherPlayerId: string) => {
     setTradeState({ isOpen: true, otherPlayerId });
@@ -542,6 +546,7 @@ export default function Home() {
 
   const closeTrade = () => {
     setTradeState({ isOpen: false, otherPlayerId: null });
+    setTradePrefill(null);
   };
 
   const [name, setName] = useState(() => {
@@ -557,6 +562,18 @@ export default function Home() {
   const sceneCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const buyTimerStartedRef = useRef(false)
+  // Listen for local trade proposal events (dispatched by TradeOverlay)
+  useEffect(() => {
+    const onProposal = (e: any) => {
+      const p: TradeProposal | undefined = e?.detail
+      if (!p) return
+      if (p.to && p.to === meId) setTradeProposal(p)
+    }
+    window.addEventListener('monopoly:tradeProposal', onProposal as any)
+    return () => window.removeEventListener('monopoly:tradeProposal', onProposal as any)
+  }, [meId])
+  // Clear any local override when fresh server state arrives
+  useEffect(() => { if (state) setLocalPlayersOverride(null) }, [state])
 
 
   useEffect(() => {
@@ -838,9 +855,9 @@ export default function Home() {
 
   const effectivePlayers = useMemo(() => {
     if (simPlayers) return simPlayers
-    const real = state?.players || {}
+    const real = (localPlayersOverride || state?.players) || {}
     return Object.keys(real).length ? real : previewPlayers
-  }, [simPlayers, state?.players, previewPlayers])
+  }, [simPlayers, state?.players, localPlayersOverride, previewPlayers])
 
   const effectiveOrder = useMemo(() => {
     if (simPlayers && simOrder.length) return simOrder
@@ -1112,7 +1129,8 @@ export default function Home() {
       !(state as any)?.auction?.active &&
       !propertyModalVisible &&
       !isSelectingTradePlayer &&
-      !tradeState?.isOpen
+      !tradeState?.isOpen &&
+      !tradeProposal
     )
   }, [
     isMyTurn,
@@ -1128,7 +1146,37 @@ export default function Home() {
     propertyModalVisible,
     isSelectingTradePlayer,
     tradeState?.isOpen,
+    tradeProposal,
   ])
+
+  // When turn switches to me while the tab was backgrounded, 3D animations may not have
+  // fired their completion callbacks (e.g., dice onFinished), leaving flags stuck (dicePlaying/route).
+  // Proactively clear those flags when my turn begins or when the tab regains focus.
+  const prevTurnPlayerRef = useRef<string | null>(null)
+  useEffect(() => {
+    const currentTurnId = state?.order?.[state?.turnIndex ?? 0] || null
+    const was = prevTurnPlayerRef.current
+    prevTurnPlayerRef.current = currentTurnId
+    if (currentTurnId && currentTurnId === meId && was !== meId) {
+      try { setDicePlaying(false) } catch {}
+      try { setAnyAnimatingRoute(false) } catch {}
+      try { setSuppressButtons(false) } catch {}
+    }
+  }, [state?.turnIndex, state?.order, meId])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const currentTurnId = state?.order?.[state?.turnIndex ?? 0] || null
+      if (currentTurnId && currentTurnId === meId) {
+        try { setDicePlaying(false) } catch {}
+        try { setAnyAnimatingRoute(false) } catch {}
+        try { setSuppressButtons(false) } catch {}
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [state?.turnIndex, state?.order, meId])
   const buyTimerRef = useRef<number | null>(null)
   function stopBuyTimer() {
     if (buyTimerRef.current != null) {
@@ -1445,7 +1493,7 @@ export default function Home() {
 
         {!getDevFlag('disable3D') && (
           <>
-            <Board3D
+              <Board3D
               // players={effectivePlayers}
               // order={effectiveOrder}
               boardImageUrl="/board.png"
@@ -1477,6 +1525,10 @@ export default function Home() {
               onInitiateTrade={openTrade}
               tradeActive={tradeState.isOpen}
               tradePlayerIds={me ? [me.id, tradeState.otherPlayerId] : []}
+              tradeInitialMoneyToGive={tradePrefill?.moneyToGive}
+              tradeInitialMoneyToGet={tradePrefill?.moneyToGet}
+              tradeInitialPropertiesToGive={tradePrefill?.propertiesToGive}
+              tradeInitialPropertiesToGet={tradePrefill?.propertiesToGet}
 
               //default states
               onBuyHouse={() => alert('Ev Al tıklandı')}
@@ -1602,6 +1654,59 @@ export default function Home() {
               send={send}
               isFullscreen={isFullscreen}
             />
+            {/* Trade proposal overlay */}
+            {tradeProposal && state && (
+              <TradeProposalOverlay
+                players={(effectiveState as any).players}
+                order={(effectiveState as any).order}
+                meId={meId}
+                proposal={tradeProposal}
+                isFullscreen={isFullscreen}
+                onDecline={() => setTradeProposal(null)}
+                onCounter={(p) => {
+                  // Map into viewer-centric initial values
+                  const isRecipient = meId === p.to
+                  const pre = {
+                    moneyToGive: isRecipient ? (p.moneyToGet || 0) : (p.moneyToGive || 0),
+                    moneyToGet: isRecipient ? (p.moneyToGive || 0) : (p.moneyToGet || 0),
+                    propertiesToGive: isRecipient ? (p.propertiesToGet || []) : (p.propertiesToGive || []),
+                    propertiesToGet: isRecipient ? (p.propertiesToGive || []) : (p.propertiesToGet || []),
+                  }
+                  setTradeProposal(null)
+                  setTradePrefill(pre)
+                  const otherId = isRecipient ? (p.from as string) : (p.to as string)
+                  openTrade(otherId)
+                }}
+                onAccept={(p) => {
+                  try {
+                    if (!state || !meId) { setTradeProposal(null); return }
+                    const fromId = p.from as string
+                    const toId = p.to as string
+                    const curPlayers = (state as any).players || {}
+                    const A = JSON.parse(JSON.stringify(curPlayers)) as Record<string, Player>
+                    const from = { ...(A[fromId] || {}) } as Player
+                    const to = { ...(A[toId] || {}) } as Player
+                    if (!from || !to) { setTradeProposal(null); return }
+                    // Money movements
+                    from.cash = Math.max(0, (from.cash || 0) - (p.moneyToGive || 0) + (p.moneyToGet || 0))
+                    to.cash = Math.max(0, (to.cash || 0) - (p.moneyToGet || 0) + (p.moneyToGive || 0))
+                    // Property transfers
+                    const moveProp = (pid: number, src: Player, dst: Player) => {
+                      try {
+                        src.properties = (src.properties || []).filter(x => x !== pid)
+                        if (!dst.properties.includes(pid)) dst.properties = [...(dst.properties || []), pid]
+                      } catch {}
+                    }
+                    ;(p.propertiesToGive || []).forEach(id => moveProp(id, from, to))
+                    ;(p.propertiesToGet || []).forEach(id => moveProp(id, to, from))
+                    A[fromId] = from; A[toId] = to
+                    setLocalPlayersOverride(A)
+                  } finally {
+                    setTradeProposal(null)
+                  }
+                }}
+              />
+            )}
             {/* Pending action card: show after any hop completes */}
             {pendingCard && !anyAnimatingRoute && (() => {
               try {
@@ -1635,8 +1740,8 @@ export default function Home() {
                 transition: 'opacity 240ms ease'
               }}>
                 <GameButtons
-                  canRoll={!!canRoll && isMyTurn && !animatingRoute && !propertyModalVisible && !isSelectingTradePlayer && !tradeState?.isOpen && !pendingCard && !((state as any)?.auction?.active)}
-                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute && !auctionGraceActive && !propertyModalVisible && !isSelectingTradePlayer && !tradeState?.isOpen && !pendingCard && !((state as any)?.auction?.active)}
+                  canRoll={!!canRoll && isMyTurn && !animatingRoute && !propertyModalVisible && !isSelectingTradePlayer && !tradeState?.isOpen && !pendingCard && !((state as any)?.auction?.active) && !tradeProposal}
+                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute && !auctionGraceActive && !propertyModalVisible && !isSelectingTradePlayer && !tradeState?.isOpen && !pendingCard && !((state as any)?.auction?.active) && !tradeProposal}
                   showAuction={!!showAuction}
                   onRoll={handleRollClick}
                   onEndTurn={() => send({ type: 'endTurn' } as any)}
@@ -1983,11 +2088,6 @@ export default function Home() {
     </main >
   )
 }
-
-
-
-
-
 
 
 

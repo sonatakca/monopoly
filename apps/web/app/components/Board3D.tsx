@@ -197,6 +197,11 @@ type Props = {
     tradeState?: { isOpen: boolean; otherPlayerId: string | null };
     send?: (e: any) => void;
     closeTrade?: () => void;
+    // Optional prefill values for TradeOverlay (e.g., from counter-offer)
+    tradeInitialMoneyToGive?: number;
+    tradeInitialMoneyToGet?: number;
+    tradeInitialPropertiesToGive?: number[];
+    tradeInitialPropertiesToGet?: number[];
 }
 
 const TOKEN_COLORS = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -1930,7 +1935,11 @@ function Board3D({
     setIsSelectingTradePlayer,
     tradeState,
     send,
-    closeTrade
+    closeTrade,
+    tradeInitialMoneyToGive,
+    tradeInitialMoneyToGet,
+    tradeInitialPropertiesToGive,
+    tradeInitialPropertiesToGet
 
 }: Props) {
 
@@ -3284,6 +3293,10 @@ function Board3D({
                     send={send!}
                     onClose={closeTrade!}
                     isFullscreen={isFullscreen as any}
+                    initialMoneyToGive={tradeInitialMoneyToGive as any}
+                    initialMoneyToGet={tradeInitialMoneyToGet as any}
+                    initialPropertiesToGive={tradeInitialPropertiesToGive as any}
+                    initialPropertiesToGet={tradeInitialPropertiesToGet as any}
                 />
             )}
 
@@ -3622,9 +3635,6 @@ function Board3D({
 }
 
 export default Board3D
-
-
-
 
 
 
