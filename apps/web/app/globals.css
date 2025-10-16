@@ -232,7 +232,65 @@ input {
   transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
 }
 input::placeholder { color: color-mix(in oklab, var(--muted) 85%, transparent) }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 18%, transparent) }
+/* input:focus { border-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 18%, transparent) } */
+
+
+.custom-slider {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  background: transparent;
+  outline: none;
+  padding: 0;
+  margin: 10px 0;
+}
+
+/* --- Track Styling (with progress) --- */
+.custom-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  /* This creates the progress effect */
+  background: #374151;
+}
+
+.custom-slider::-moz-range-track {
+  width: 100%;
+  height: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  background: #374151;
+}
+
+
+/* --- Thumb Styling (uses the player color) --- */
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0px solid #fff;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -6px;
+  /* Use the CSS variable for the background color */
+  background: var(--slider-color, #60a5fa);
+}
+
+.custom-slider::-moz-range-thumb {
+  border: 2px solid #fff;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  /* Use the CSS variable for the background color */
+  background: var(--slider-color, #60a5fa);
+}
+
+
 
 /* Auto-card for page.tsx wrapper */
 .stack > main { display: grid; gap: 12px }

@@ -21,6 +21,8 @@ type Props = {
   designWidthPx?: number
   totalPlayers: number
   onInitiateTrade?: (playerId: string) => void
+  // context?: string;
+  hideProperties?: boolean
 }
 
 function Money({ value }: { value: number }) {
@@ -66,8 +68,17 @@ export default function PlayerCard({
   layoutScale = 1,
   designWidthPx = 240,
   totalPlayers,
-  onInitiateTrade
+  onInitiateTrade,
+  // context,
+  hideProperties = false,
 }: Props) {
+
+  // useEffect(() => {
+  //   console.log(
+  //     `PlayerCard Rendered [Context: ${context || 'Unknown'}] - Player: ${player.name}, Received orderIndex: ${orderIndex}`
+  //   );
+  // }, [player, orderIndex, context]);
+
   const owned = useMemo(() => new Set<number>(player.properties || []), [player.properties])
   const dot = PLAYER_DOTS[(orderIndex || 0) % PLAYER_DOTS.length]
   const dim = !!player.bankrupt
@@ -325,49 +336,51 @@ export default function PlayerCard({
         </Tippy>
       </div>
 
-      <div style={boardBand}>
-        <div style={grid}>
-          {PROPERTY_TEMPLATE.map((id: number) => {
-            const kind = kindOf(id)
-            const ownedByMe = owned.has(id)
-            const mort = ownedByMe && isMortgaged(id)
-            const setColor = colorOf(id)
-            const bg = ownedByMe
-              ? (kind === 'PROPERTY' ? (SET_COLORS[String(setColor)] || NEUTRAL)
-                : (kind === 'STATION' ? STATION_COLOR : UTILITY_COLOR))
-              : (SET_COLORS[String(setColor)] || NEUTRAL)
-            const opacity = ownedByMe ? 1 : 0.35
-            const chip: React.CSSProperties = {
-              width: 8, height: 8,
-              borderRadius: 2,
-              background: bg,
-              opacity,
-              border: ownedByMe ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.65)',
-              position: 'relative',
-              cursor: 'pointer',
-            }
-            const label = `${nameOf(id)}${mort ? ' — (ipotekli)' : ownedByMe ? '' : ''}`
-            return (
-              <Tippy
-                key={id} // Use key here on the top-level element
-                content={label}
-                followCursor={true}
-                plugins={[followCursor]}
-                // offset={[isLastPlayerIn8PlayerGame ? horizontalOffsetForLastPlayer : 10, 10]}
-                offset={[10, 10]}
-                arrow={false}
-                appendTo={() => document.querySelector('#game') || document.body}
-                theme="custom">
-                <div key={id} style={chip} onClick={() => onInitiateTrade && onInitiateTrade(player.id)}>
-                  {mort && (
-                    <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 3px)' }} />
-                  )}
-                </div>
-              </Tippy>
-            )
-          })}
+      {!hideProperties && (
+        <div style={boardBand}>
+          <div style={grid}>
+            {PROPERTY_TEMPLATE.map((id: number) => {
+              const kind = kindOf(id)
+              const ownedByMe = owned.has(id)
+              const mort = ownedByMe && isMortgaged(id)
+              const setColor = colorOf(id)
+              const bg = ownedByMe
+                ? (kind === 'PROPERTY' ? (SET_COLORS[String(setColor)] || NEUTRAL)
+                  : (kind === 'STATION' ? STATION_COLOR : UTILITY_COLOR))
+                : (SET_COLORS[String(setColor)] || NEUTRAL)
+              const opacity = ownedByMe ? 1 : 0.35
+              const chip: React.CSSProperties = {
+                width: 8, height: 8,
+                borderRadius: 2,
+                background: bg,
+                opacity,
+                border: ownedByMe ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.65)',
+                position: 'relative',
+                cursor: 'pointer',
+              }
+              const label = `${nameOf(id)}${mort ? ' — (ipotekli)' : ownedByMe ? '' : ''}`
+              return (
+                <Tippy
+                  key={id} // Use key here on the top-level element
+                  content={label}
+                  followCursor={true}
+                  plugins={[followCursor]}
+                  // offset={[isLastPlayerIn8PlayerGame ? horizontalOffsetForLastPlayer : 10, 10]}
+                  offset={[10, 10]}
+                  arrow={false}
+                  appendTo={() => document.querySelector('#game') || document.body}
+                  theme="custom">
+                  <div key={id} style={chip} onClick={() => onInitiateTrade && onInitiateTrade(player.id)}>
+                    {mort && (
+                      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 3px)' }} />
+                    )}
+                  </div>
+                </Tippy>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

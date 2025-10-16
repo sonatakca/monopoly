@@ -1088,10 +1088,47 @@ export default function Home() {
     window.addEventListener('monopoly:passGo', onPassGo as any)
     return () => window.removeEventListener('monopoly:passGo', onPassGo as any)
   }, [state?.pendingVisit, state?.players])
+  // Track visibility of the fullscreen 3D Property Card modal (emitted by Board3D)
+  const [propertyModalVisible, setPropertyModalVisible] = useState(false)
+  useEffect(() => {
+    const onProp = (e: any) => {
+      try { setPropertyModalVisible(!!e?.detail?.visible) } catch { setPropertyModalVisible(false) }
+    }
+    window.addEventListener('monopoly:propertyModalVisible', onProp as any)
+    return () => window.removeEventListener('monopoly:propertyModalVisible', onProp as any)
+  }, [])
+
   const showControls = useMemo(() => {
     const suppress = localRollPending.current || dicePlaying || anyAnimatingRoute || suppressButtons
-    return !!(isMyTurn && !animatingRoute && !suppress && (canRoll || canEndTurn) && !buyModal && !pendingCard && !(state as any)?.auction?.active)
-  }, [isMyTurn, animatingRoute, canRoll, canEndTurn, buyModal, pendingCard, anyAnimatingRoute, dicePlaying, suppressButtons, (state as any)?.auction?.active])
+    // Hide when: not my turn, animating, suppressed, no actions, buy modal, action card, auction active,
+    // property card modal open, selecting trade player, or trade overlay open
+    return !!(
+      isMyTurn &&
+      !animatingRoute &&
+      !suppress &&
+      (canRoll || canEndTurn) &&
+      !buyModal &&
+      !pendingCard &&
+      !(state as any)?.auction?.active &&
+      !propertyModalVisible &&
+      !isSelectingTradePlayer &&
+      !tradeState?.isOpen
+    )
+  }, [
+    isMyTurn,
+    animatingRoute,
+    canRoll,
+    canEndTurn,
+    buyModal,
+    pendingCard,
+    anyAnimatingRoute,
+    dicePlaying,
+    suppressButtons,
+    (state as any)?.auction?.active,
+    propertyModalVisible,
+    isSelectingTradePlayer,
+    tradeState?.isOpen,
+  ])
   const buyTimerRef = useRef<number | null>(null)
   function stopBuyTimer() {
     if (buyTimerRef.current != null) {
@@ -1409,8 +1446,8 @@ export default function Home() {
         {!getDevFlag('disable3D') && (
           <>
             <Board3D
-              players={effectivePlayers}
-              order={effectiveOrder}
+              // players={effectivePlayers}
+              // order={effectiveOrder}
               boardImageUrl="/board.png"
 
               models={tokenModels}
@@ -1587,10 +1624,19 @@ export default function Home() {
               } catch { return null }
             })()}
             {state?.started && (
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 240ms ease' }}>
+              <div style={{
+                position: 'absolute',
+                left: '50%',
+                bottom: isFullscreen ? '13%' : '17%',
+                transform: 'translateX(-50%)',
+                zIndex: 9999,
+                opacity: showControls ? 1 : 0,
+                pointerEvents: showControls ? 'auto' : 'none',
+                transition: 'opacity 240ms ease'
+              }}>
                 <GameButtons
-                  canRoll={!!canRoll && isMyTurn && !animatingRoute}
-                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute && !auctionGraceActive}
+                  canRoll={!!canRoll && isMyTurn && !animatingRoute && !propertyModalVisible && !isSelectingTradePlayer && !tradeState?.isOpen && !pendingCard && !((state as any)?.auction?.active)}
+                  canEndTurn={!!canEndTurn && isMyTurn && !animatingRoute && !auctionGraceActive && !propertyModalVisible && !isSelectingTradePlayer && !tradeState?.isOpen && !pendingCard && !((state as any)?.auction?.active)}
                   showAuction={!!showAuction}
                   onRoll={handleRollClick}
                   onEndTurn={() => send({ type: 'endTurn' } as any)}
@@ -1937,8 +1983,6 @@ export default function Home() {
     </main >
   )
 }
-
-
 
 
 

@@ -55,7 +55,7 @@ export default function PlayersStrip({
     gridTemplateColumns: `repeat(${SLOTS}, ${colW}px)`,
     justifyContent: 'center',
     alignItems: 'end',
-    gap: 0,
+    gap: isFullscreen ? 0 : 0,
     width: '100%',
   }
   const cell: React.CSSProperties = { display: 'flex', justifyContent: 'center', alignItems: 'end', marginBottom: 10 }

@@ -126,8 +126,8 @@ export function getHouseModelYaw(tile: number): number {
 }
 
 type Props = {
-    players?: Record<string, Player>
-    order?: string[]
+    // players?: Record<string, Player>
+    // order?: string[]
     worldSize?: number
     indexRotation?: 0 | 90 | 180 | 270
     pathDirection?: PathDirection
@@ -1871,8 +1871,8 @@ function HouseZonesOverlay({
 }
 /* Main */
 function Board3D({
-    players = {},
-    order = [],
+    // players = {},
+    // order = [],
     worldSize = 10,
     indexRotation = 0,
     pathDirection = 'clockwise',
@@ -1934,7 +1934,8 @@ function Board3D({
 
 }: Props) {
 
-
+    const players = fullGameState?.players || {};
+    const order = fullGameState?.order || [];
     const [, forceUpdate] = useState(0);
 
     useEffect(() => {
@@ -2217,6 +2218,13 @@ function Board3D({
     const lowDpr = getDevFlag('lowDpr')
     // Selected property card to show (on click)
     const [openCardId, setOpenCardId] = useState<number | null>(null)
+    // Notify parent (via window event) when the 3D Property Card modal visibility changes
+    useEffect(() => {
+        try {
+            const visible = openCardId != null
+            window.dispatchEvent(new CustomEvent('monopoly:propertyModalVisible', { detail: { visible } }))
+        } catch { }
+    }, [openCardId])
     // Preload all property card images (front/back)
     useEffect(() => {
         try {
@@ -3207,7 +3215,7 @@ function Board3D({
                 )}                {/* Extra scene content (e.g., animated dice) */}
                 {children}
 
-                {isSelectingTradePlayer && fullGameState && (
+                {/* {isSelectingTradePlayer && fullGameState && (
                     <Html
                         center // This makes positioning easier
                         position={[0, 1, 0]} // Position it in the center, floating 1 unit above the board
@@ -3216,8 +3224,9 @@ function Board3D({
                         wrapperClass="html-modal-wrapper"
                     >
                         <PlayerSelectionModal
-                            order={fullGameState.order}
-                            players={fullGameState.players}
+                            // Use the direct 'order' and 'players' props that Board3D receives
+                            order={order!}
+                            players={players!}
                             meId={meId ?? null}
                             onSelectPlayer={(pid) => {
                                 openTrade?.(pid);
@@ -3227,23 +3236,59 @@ function Board3D({
                         />
                     </Html>
                 )}
+                {tradeState?.isOpen && fullGameState && (
+                    <Html
+                        center
+                        position={[0, 1, 0]} // Position it in the center, floating above the board
+                        as='div'
+                        wrapperClass="html-modal-wrapper" // Prevents clicks from passing through
+                    >
+                        <TradeOverlay
+                            // state={fullGameState as any}
+                            players={players}
+                            order={order}
 
+                            meId={meId ?? null}
+                            otherPlayerId={tradeState.otherPlayerId}
+                            send={send!}
+                            onClose={closeTrade!}
+                        />
+                    </Html>
+                )} */}
 
             </Canvas>
+            {isSelectingTradePlayer && fullGameState && (
 
-            {tradeState?.isOpen && (
-                <TradeOverlay
-                    // REMOVE state={fullGameState}
-                    // ADD the direct players and order props
-                    players={players!}
+                <PlayerSelectionModal
+                    // Use the direct 'order' and 'players' props that Board3D receives
                     order={order!}
+                    players={players!}
+                    meId={meId ?? null}
+                    onSelectPlayer={(pid) => {
+                        openTrade?.(pid);
+                        setIsSelectingTradePlayer?.(false);
+                    }}
+                    onCancel={() => setIsSelectingTradePlayer?.(false)}
+                    isFullscreen={isFullscreen as any}
+                />
+            )}
+            {tradeState?.isOpen && fullGameState && (
+
+                <TradeOverlay
+                    // state={fullGameState as any}
+                    players={players}
+                    order={order}
 
                     meId={meId ?? null}
                     otherPlayerId={tradeState.otherPlayerId}
                     send={send!}
                     onClose={closeTrade!}
+                    isFullscreen={isFullscreen as any}
                 />
             )}
+
+
+
 
             <div className='modernButtonContainer'
                 style={{
@@ -3556,9 +3601,16 @@ function Board3D({
                 </div>
             )}
             {/* Players strip HUD over the map (hidden until game starts) */}
-            {showHud && (
+            {showHud && fullGameState && (
                 <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 12px', zIndex: 25, pointerEvents: 'auto' }}>
-                    <PlayersStrip players={players as any} order={order as any} currentId={currentPlayerId} activityKey={activityKey} onCardRectsChange={onCardRectsChange} isFullscreen={isFullscreen as any} onInitiateTrade={onInitiateTrade} />
+                    <PlayersStrip
+                        players={fullGameState.players as any}
+                        order={fullGameState.order as any}
+                        currentId={currentPlayerId}
+                        activityKey={activityKey}
+                        onCardRectsChange={onCardRectsChange}
+                        isFullscreen={isFullscreen as any}
+                        onInitiateTrade={onInitiateTrade} />
                 </div>
             )}
             {/* Fullscreen 3D property card viewer over a blue background */}
@@ -3570,7 +3622,6 @@ function Board3D({
 }
 
 export default Board3D
-
 
 
 
