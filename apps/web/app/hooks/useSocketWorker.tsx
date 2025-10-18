@@ -33,8 +33,17 @@ export const useSocketWorker = () => {
                     setState(payload.state);
                 } else if (payload.type === 'tradeProposal') {
                     try { window.dispatchEvent(new CustomEvent('monopoly:tradeProposal', { detail: payload.proposal })) } catch {}
-                } else {
-                    // no-op: other server events are not handled yet
+                } else if (payload.type === 'msg') {
+                    try { console.log('[MSG]', payload.text) } catch {}
+                } else if (payload.type === 'error') {
+                    try {
+                        const msg = String(payload.text || '')
+                        console.warn('[ERROR]', msg)
+                        // Suppress noisy turn-order alerts — UI already gates these actions
+                        const normalized = msg.normalize('NFKD').toLowerCase()
+                        const isTurnMsg = normalized.includes('siran') || normalized.includes('sıran') || normalized.includes('sira') && normalized.includes('degil') || normalized.includes('değil')
+                        if (!isTurnMsg) alert(msg)
+                    } catch {}
                 }
             }
         };

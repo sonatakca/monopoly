@@ -537,6 +537,73 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
     out.push({ type:'state', state }); return out
   }
 
+  // Trading (not gated by current turn)
+  if (evt.type === 'proposeTrade') {
+    try {
+      const raw: any = (evt as any).proposal || {}
+      const to = String(raw.to || '')
+      if (to) {
+        const proposal = {
+          id: String(raw.id || crypto.randomBytes(6).toString('hex')),
+          from: playerId,
+          to,
+          moneyToGive: Math.max(0, Number(raw.moneyToGive || 0)),
+          propertiesToGive: Array.isArray(raw.propertiesToGive) ? raw.propertiesToGive.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [],
+          moneyToGet: Math.max(0, Number(raw.moneyToGet || 0)),
+          propertiesToGet: Array.isArray(raw.propertiesToGet) ? raw.propertiesToGet.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [],
+        }
+        out.push({ type: 'tradeProposal', proposal } as any)
+        out.push({ type: 'msg', text: `${(state as any).players[playerId]?.name || 'Oyuncu'} bir takas teklifi gönderdi.` })
+      }
+    } catch {}
+    return [...out, { type: 'state', state }]
+  }
+  if (evt.type === 'acceptTrade') {
+    try {
+      const p: any = (evt as any).proposal
+      if (p && playerId === p.to) {
+        const from = (state as any).players[p.from]
+        const to = (state as any).players[p.to]
+        if (from && to) {
+          const giveA = Math.max(0, Math.floor(p.moneyToGive || 0))
+          const giveB = Math.max(0, Math.floor(p.moneyToGet || 0))
+          if (from.cash >= giveA && to.cash >= giveB) {
+            const wantA: number[] = Array.isArray(p.propertiesToGive) ? p.propertiesToGive : []
+            const wantB: number[] = Array.isArray(p.propertiesToGet) ? p.propertiesToGet : []
+            const ownsAll = (owner: any, ids: number[]) => ids.every(id => owner.properties.includes(id))
+            if (ownsAll(from, wantA) && ownsAll(to, wantB)) {
+              from.cash -= giveA; to.cash += giveA
+              to.cash -= giveB; from.cash += giveB
+              const moveProp = (pid: number, src: any, dst: any) => {
+                src.properties = src.properties.filter((x: number) => x !== pid)
+                if (!dst.properties.includes(pid)) dst.properties.push(pid)
+                const houses = (src.houses || {})[pid] || 0
+                const hotels = (src.hotels || {})[pid] || 0
+                if (houses) { dst.houses = dst.houses || {}; dst.houses[pid] = houses; if (src.houses) delete src.houses[pid] }
+                if (hotels) { dst.hotels = dst.hotels || {}; dst.hotels[pid] = hotels; if (src.hotels) delete src.hotels[pid] }
+              }
+              wantA.forEach(id => moveProp(id, from, to))
+              wantB.forEach(id => moveProp(id, to, from))
+              out.push({ type: 'msg', text: `${from.name} ve ${to.name} arasında takas tamamlandı.` })
+            } else {
+              out.push({ type: 'error', text: 'Takas için mülkiyet doğrulanamadı.' })
+            }
+          } else {
+            out.push({ type: 'error', text: 'Takas için bakiye yetersiz.' })
+          }
+        }
+      }
+    } catch { out.push({ type: 'error', text: 'Takas uygulanamadı.' }) }
+    return [...out, { type: 'state', state }]
+  }
+  if (evt.type === 'declineTrade') {
+    try {
+      const who = (state as any).players[playerId]?.name || 'Oyuncu'
+      out.push({ type: 'msg', text: `${who} takas teklifini reddetti.` })
+    } catch {}
+    return [...out, { type: 'state', state }]
+  }
+
 
   // Finalize auction can be triggered by any client; not gated by current turn
   if (evt.type === 'finalizeAuction') {
@@ -723,6 +790,56 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
       break
     }
 
+    // --- Trading acceptance: apply money + property transfers authoritatively ---
+    case 'acceptTrade': {
+      try {
+        const p: TradeProposal = (evt as any).proposal
+        if (!p || playerId !== p.to) break // only the recipient can accept
+        const from = state.players[p.from]
+        const to = state.players[p.to]
+        if (!from || !to) break
+        // Validate money
+        const giveA = Math.max(0, Math.floor(p.moneyToGive || 0))
+        const giveB = Math.max(0, Math.floor(p.moneyToGet || 0))
+        if (from.cash < giveA || to.cash < giveB) { out.push({ type: 'error', text: 'Takas için bakiye yetersiz.' }); break }
+        // Validate properties
+        const wantA: number[] = Array.isArray(p.propertiesToGive) ? p.propertiesToGive : []
+        const wantB: number[] = Array.isArray(p.propertiesToGet) ? p.propertiesToGet : []
+        const ownsAll = (owner: Player, ids: number[]) => ids.every(id => owner.properties.includes(id))
+        if (!ownsAll(from, wantA) || !ownsAll(to, wantB)) { out.push({ type: 'error', text: 'Takas için mülkiyet doğrulanamadı.' }); break }
+
+        // Apply money transfers
+        from.cash -= giveA; to.cash += giveA
+        to.cash -= giveB; from.cash += giveB
+
+        // Transfer properties (and any house/hotel counters associated with those ids)
+        const moveProp = (pid: number, src: Player, dst: Player) => {
+          src.properties = src.properties.filter(x => x !== pid)
+          if (!dst.properties.includes(pid)) dst.properties.push(pid)
+          const houses = (src.houses as any)[pid] || 0
+          const hotels = (src.hotels as any)[pid] || 0
+          if (houses) { (dst.houses as any)[pid] = houses; delete (src.houses as any)[pid] }
+          if (hotels) { (dst.hotels as any)[pid] = hotels; delete (src.hotels as any)[pid] }
+        }
+        wantA.forEach(id => moveProp(id, from, to))
+        wantB.forEach(id => moveProp(id, to, from))
+
+        log.push(`${from.name} ve ${to.name} arasında takas tamamlandı.`)
+      } catch (e) {
+        out.push({ type: 'error', text: 'Takas uygulanamadı.' })
+      }
+      break
+    }
+
+    case 'declineTrade': {
+      try {
+        const p: TradeProposal = (evt as any).proposal
+        const who = state.players[playerId]?.name || 'Oyuncu'
+        if (p && p.to === playerId) log.push(`${who} takas teklifini reddetti.`)
+      } catch {}
+      break
+    }
+
     // Client signals arrival: resolve the space effects now
     case 'arrived': {
       const pv = (state as any).pendingVisit
@@ -745,5 +862,3 @@ export function reducer(state: any, playerId: string, evt: ClientEvent | any): S
   out.push({ type: 'state', state })
   return out
 }
-
-

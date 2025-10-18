@@ -1,15 +1,24 @@
 import './globals.css'
 import PreloadMetallic from './components/PreloadMetallic'
 import type React from 'react'
-import { Inter } from 'next/font/google'
+import localFont from 'next/font/local'
 import Image from 'next/image'
 import 'tippy.js/dist/tippy.css';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
+const productSans = localFont({
+  src: [
+    { path: '../public/fonts/Product Sans Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../public/fonts/Product Sans Italic.ttf',  weight: '400', style: 'italic' },
+    { path: '../public/fonts/Product Sans Bold.ttf',    weight: '700', style: 'normal' },
+    { path: '../public/fonts/Product Sans Bold Italic.ttf', weight: '700', style: 'italic' },
+  ],
+  variable: '--font-sans',
+  display: 'swap',
+})
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" className={inter.variable}>
+    <html lang="tr" className={productSans.variable}>
       <body className="app-body">
         {/* Preload metallic layer once for the whole app */}
         <PreloadMetallic />

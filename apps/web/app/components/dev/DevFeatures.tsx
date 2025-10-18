@@ -36,7 +36,6 @@ export function DevFPS({ pos = { top: 8, left: 8 } as React.CSSProperties }) {
     padding: '6px 8px',
     borderRadius: 8,
     border: '1px solid rgba(255,255,255,0.25)',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
     fontSize: 12,
     lineHeight: 1.2,
     pointerEvents: 'none',
@@ -52,4 +51,3 @@ export function DevFPS({ pos = { top: 8, left: 8 } as React.CSSProperties }) {
 }
 
 export default { DevFPS }
-

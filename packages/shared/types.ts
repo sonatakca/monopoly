@@ -156,6 +156,8 @@ export type ClientEvent =
   | { type: 'arrived' }
   // Trading (lightweight UI broadcast via server)
   | { type: 'proposeTrade'; proposal: TradeProposal }
+  | { type: 'acceptTrade'; proposal: TradeProposal }
+  | { type: 'declineTrade'; proposal: TradeProposal }
 
 export type ServerEvent =
   | { type: 'state'; state: RoomState }

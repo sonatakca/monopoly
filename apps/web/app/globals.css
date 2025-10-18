@@ -157,6 +157,7 @@ button {
   height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border);
   background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; font-weight: 600;
   transition: transform .08s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji);
 }
 button:hover { transform: translateY(-1px); background: rgba(255,255,255,0.10) }
 button:active { transform: translateY(0) scale(0.98) }
@@ -219,7 +220,7 @@ button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2)
   font-weight: 500;
   white-space: nowrap;
   z-index: 999;
-   box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+   box-shadow: 0 0px 12px rgba(255, 255, 255, 0.2);
 }
 
 .tippy-box[data-theme~='custom'] .tippy-arrow {

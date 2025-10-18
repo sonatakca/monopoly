@@ -538,7 +538,6 @@ export default function Home() {
   const [isSelectingTradePlayer, setIsSelectingTradePlayer] = useState(false);
   const [tradeProposal, setTradeProposal] = useState<TradeProposal | null>(null);
   const [tradePrefill, setTradePrefill] = useState<{ moneyToGive: number; moneyToGet: number; propertiesToGive: number[]; propertiesToGet: number[] } | null>(null);
-  const [localPlayersOverride, setLocalPlayersOverride] = useState<Record<string, Player> | null>(null);
   // Proposal window: 30s total countdown across proposals for the current turn
   const TRADE_PROPOSAL_WINDOW_MS = 30_000;
   const [tradeProposalExpireAt, setTradeProposalExpireAt] = useState<number | null>(null);
@@ -602,8 +601,6 @@ export default function Home() {
     lastProposalTurnRef.current = state?.turnIndex ?? null
     setTradeProposalExpireAt(null)
   }, [state?.turnIndex])
-  // Clear any local override when fresh server state arrives
-  useEffect(() => { if (state) setLocalPlayersOverride(null) }, [state])
 
 
   useEffect(() => {
@@ -885,9 +882,9 @@ export default function Home() {
 
   const effectivePlayers = useMemo(() => {
     if (simPlayers) return simPlayers
-    const real = (localPlayersOverride || state?.players) || {}
+    const real = state?.players || {}
     return Object.keys(real).length ? real : previewPlayers
-  }, [simPlayers, state?.players, localPlayersOverride, previewPlayers])
+  }, [simPlayers, state?.players, previewPlayers])
 
   const effectiveOrder = useMemo(() => {
     if (simPlayers && simOrder.length) return simOrder
@@ -1705,7 +1702,7 @@ export default function Home() {
                 meId={meId}
                 proposal={tradeProposal}
                 isFullscreen={isFullscreen}
-                onDecline={() => setTradeProposal(null)}
+                onDecline={(p) => { try { send({ type: 'declineTrade', proposal: p } as any) } catch {}; setTradeProposal(null) }}
                 onCounter={(p) => {
                   // Map into viewer-centric initial values
                   const isRecipient = meId === p.to
@@ -1720,34 +1717,7 @@ export default function Home() {
                   const otherId = isRecipient ? (p.from as string) : (p.to as string)
                   openTrade(otherId)
                 }}
-                onAccept={(p) => {
-                  try {
-                    if (!state || !meId) { setTradeProposal(null); return }
-                    const fromId = p.from as string
-                    const toId = p.to as string
-                    const curPlayers = (state as any).players || {}
-                    const A = JSON.parse(JSON.stringify(curPlayers)) as Record<string, Player>
-                    const from = { ...(A[fromId] || {}) } as Player
-                    const to = { ...(A[toId] || {}) } as Player
-                    if (!from || !to) { setTradeProposal(null); return }
-                    // Money movements
-                    from.cash = Math.max(0, (from.cash || 0) - (p.moneyToGive || 0) + (p.moneyToGet || 0))
-                    to.cash = Math.max(0, (to.cash || 0) - (p.moneyToGet || 0) + (p.moneyToGive || 0))
-                    // Property transfers
-                    const moveProp = (pid: number, src: Player, dst: Player) => {
-                      try {
-                        src.properties = (src.properties || []).filter(x => x !== pid)
-                        if (!dst.properties.includes(pid)) dst.properties = [...(dst.properties || []), pid]
-                      } catch {}
-                    }
-                    ;(p.propertiesToGive || []).forEach(id => moveProp(id, from, to))
-                    ;(p.propertiesToGet || []).forEach(id => moveProp(id, to, from))
-                    A[fromId] = from; A[toId] = to
-                    setLocalPlayersOverride(A)
-                  } finally {
-                    setTradeProposal(null)
-                  }
-                }}
+                onAccept={(p) => { try { send({ type: 'acceptTrade', proposal: p } as any) } catch {}; setTradeProposal(null) }}
               />
             )}
             {/* Pending action card: show after any hop completes */}
@@ -2131,8 +2101,6 @@ export default function Home() {
     </main >
   )
 }
-
-
 
 
 
