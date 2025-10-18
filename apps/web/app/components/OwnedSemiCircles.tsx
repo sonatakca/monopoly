@@ -1,7 +1,8 @@
 "use client"
 
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { useFrame } from '@react-three/fiber'
 import bakedSemiCirclesRaw from '../../public/baked-in-content/semi-circle-zones.json'
 
 type Edge = 'top' | 'bottom' | 'left' | 'right' | 'corner'
@@ -112,7 +113,7 @@ export default function OwnedSemiCircles({
       const grad = ctx.createLinearGradient(0, 0, 0, h)
       // Top: solid, Bottom: ~60% (like #xx99)
       grad.addColorStop(0, `rgba(${r},${g},${b},1)`)
-      grad.addColorStop(1, `rgba(${r},${g},${b},1)`)
+      grad.addColorStop(1, `rgba(${r},${g},${b},0.6)`)
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, w, h)
       const tex = new THREE.CanvasTexture(canvas)
@@ -123,6 +124,47 @@ export default function OwnedSemiCircles({
     }
     return make
   }, [])
+
+  // Animation state: first-seen timestamps and refs per tile
+  const appearStartRef = useRef<Record<number, number>>({})
+  const groupRefs = useRef<Record<number, THREE.Group | null>>({})
+  const matRefs = useRef<Record<number, THREE.MeshStandardMaterial | null>>({})
+  const tilesRef = useRef<number[]>(tiles)
+
+  useEffect(() => {
+    tilesRef.current = tiles
+    const now = performance.now()
+    for (const ti of tiles) {
+      if (appearStartRef.current[ti] == null) appearStartRef.current[ti] = now
+    }
+    // Cleanup timestamps for tiles no longer owned to allow re-animate if reacquired later
+    for (const key of Object.keys(appearStartRef.current)) {
+      const k = Number(key)
+      if (!tiles.includes(k)) delete appearStartRef.current[k]
+    }
+  }, [tiles])
+
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+  const easeOutBack = (x: number) => {
+    const c1 = 1.70158, c3 = c1 + 1
+    const t = x - 1
+    return 1 + c3 * (t * t * t) + c1 * (t * t)
+  }
+
+  useFrame(() => {
+    const now = performance.now()
+    const duration = 520 // ms
+    const list = tilesRef.current
+    for (const ti of list) {
+      const start = appearStartRef.current[ti] || now
+      const p = clamp01((now - start) / duration)
+      const s = 0.8 + 0.2 * easeOutBack(p)
+      const g = groupRefs.current[ti]
+      const m = matRefs.current[ti]
+      if (g) g.scale.setScalar(s)
+      if (m) m.opacity = 0.15 + 0.85 * p
+    }
+  })
 
   return (
     <group>
@@ -166,7 +208,7 @@ export default function OwnedSemiCircles({
         const tileColor = (colorByTile && colorByTile[ti]) || color
         const mapTex = gradientForColor(tileColor)
         return (
-          <group key={`owned-sc-${ti}`} position={pos} rotation={[rotX, rotY, rotZ]}>
+          <group key={`owned-sc-${ti}`} position={pos} rotation={[rotX, rotY, rotZ]} ref={el => { groupRefs.current[ti] = el }}>
             <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={3}>
               <cylinderGeometry
                 args={[
@@ -183,10 +225,12 @@ export default function OwnedSemiCircles({
               <meshStandardMaterial
                 color={'#ffffff'}
                 map={mapTex as any}
-                // transparent
+                transparent
                 roughness={0.5}
                 metalness={0.2}
                 side={2}
+                opacity={0}
+                ref={el => { matRefs.current[ti] = el as any }}
               />
             </mesh>
           </group>
