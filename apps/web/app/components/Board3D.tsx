@@ -2,6 +2,7 @@
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
 import { Html, OrbitControls, useTexture } from '@react-three/drei'
 import PropertyCard3D from './PropertyCard3D'
+import SemiCircles from './SemiCircles'
 import PlayersStrip from './PlayersStrip'
 import PropertyCardModal3D from './PropertyCardModal3D'
 import { ensureDevFlagsAPI, getDevFlag } from '../components/dev/devFlags'
@@ -28,6 +29,10 @@ import { TbCards } from "react-icons/tb";
 import MortgageIcon from './icons/MortgageIcon.png';
 import PlayerSelectionModal from './PlayerSelectionModal';
 import TradeOverlay from './TradeOverlay';
+import { FaHouseLock } from "react-icons/fa6";
+import { MdSell } from "react-icons/md";
+
+
 
 type Lighting = {
     ambient?: number
@@ -199,6 +204,10 @@ type Props = {
     closeTrade?: () => void;
     /** Freeze current player's timer bar (e.g., during animations/auctions) */
     timerFrozen?: boolean;
+    /** Hide the floating Trade button when conditions require */
+    hideTradeButton?: boolean;
+    /** Whether turn-based action buttons should be visible (e.g., only on your turn) */
+    showTurnActions?: boolean;
     // Optional prefill values for TradeOverlay (e.g., from counter-offer)
     tradeInitialMoneyToGive?: number;
     tradeInitialMoneyToGet?: number;
@@ -1942,7 +1951,9 @@ function Board3D({
     tradeInitialMoneyToGet,
     tradeInitialPropertiesToGive,
     tradeInitialPropertiesToGet,
-    timerFrozen
+    timerFrozen,
+    hideTradeButton,
+    showTurnActions = true
 
 }: Props) {
 
@@ -1985,6 +1996,100 @@ function Board3D({
         exposure: lighting?.exposure ?? 1.0,
         background: lighting?.background ?? '#333333',
     }
+
+    // --- Access control for action buttons (Ev/Otel/Mortgage) -------------------
+    const me = (meId && players ? players[meId] : null) as Player | null
+    const bankHouses = (fullGameState as any)?.bank?.houses ?? 0
+    const bankHotels = (fullGameState as any)?.bank?.hotels ?? 0
+
+    const isProperty = (id: number) => {
+        try { return (board as any).spaces?.[id]?.type === 'PROPERTY' } catch { return false }
+    }
+    const propOf = (id: number) => ((board as any).spaces?.[id] || null) as any
+    const isMortgaged = (id: number) => {
+        try { return !!((board as any).spaces?.[id]?.mortgaged) } catch { return false }
+    }
+
+    const colorSets: Record<string, number[]> = useMemo(() => {
+        const m: Record<string, number[]> = {}
+        try {
+            const spaces: any[] = (board as any).spaces || []
+            spaces.forEach((s: any, idx: number) => {
+                if (s?.type === 'PROPERTY' && s?.color) {
+                    const c = String(s.color)
+                    if (!m[c]) m[c] = []
+                    m[c].push(idx)
+                }
+            })
+        } catch { }
+        return m
+    }, [])
+
+    const ownsFullSet = (color: string, owned: Set<number>) => {
+        const ids = colorSets[color] || []
+        return ids.length > 0 && ids.every(id => owned.has(id))
+    }
+
+    const canBuyHouseAny = useMemo(() => {
+        if (!me) return false
+        if (bankHouses <= 0) return false
+        const owned = new Set<number>(me.properties || [])
+        // For any fully owned color set, allow if there exists a property at the min level (<4) without a hotel and not mortgaged
+        for (const [color, ids] of Object.entries(colorSets)) {
+            if (!ownsFullSet(color, owned)) continue
+            // Compute per-tile levels (hotel counts as 5)
+            const levels = ids.map(id => (me.hotels as any)?.[id] ? 5 : ((me.houses as any)?.[id] || 0))
+            const minLevel = Math.min(...levels)
+            for (const id of ids) {
+                const hasHotel = !!((me.hotels as any)?.[id])
+                const thisLevel = ((me.houses as any)?.[id] || 0)
+                const sp = propOf(id)
+                if (sp?.type !== 'PROPERTY') continue
+                if (thisLevel === minLevel && thisLevel < 4 && !hasHotel && !sp?.mortgaged) {
+                    return true
+                }
+            }
+        }
+        return false
+    }, [me, bankHouses, colorSets])
+
+    const canSellHouseAny = useMemo(() => {
+        if (!me) return false
+        const houses = me.houses || {}
+        for (const k in houses) { if (houses[k as any] > 0) return true }
+        return false
+    }, [me])
+
+    const canBuyHotelAny = useMemo(() => {
+        if (!me) return false
+        if (bankHotels <= 0) return false
+        const owned = new Set<number>(me.properties || [])
+        for (const [color, ids] of Object.entries(colorSets)) {
+            if (!ownsFullSet(color, owned)) continue
+            const allHaveFour = ids.every(id => ((me.houses as any)?.[id] || 0) === 4)
+            if (!allHaveFour) continue
+            for (const id of ids) {
+                const sp = propOf(id)
+                if (sp?.type !== 'PROPERTY') continue
+                const hasHotel = !!((me.hotels as any)?.[id])
+                if (!hasHotel && !sp?.mortgaged) return true
+            }
+        }
+        return false
+    }, [me, bankHotels, colorSets])
+
+    const canSellHotelAny = useMemo(() => {
+        if (!me) return false
+        const hotels = me.hotels || {}
+        for (const k in hotels) { if (hotels[k as any] > 0) return true }
+        return false
+    }, [me])
+
+    const canMortgageAny = useMemo(() => {
+        if (!me) return false
+        const props = me.properties || []
+        return props.some(id => isProperty(id) && !isMortgaged(id))
+    }, [me])
 
     const inset = Math.max(0, Math.min(outfill, worldSize / 2 - 0.001))
     const topSize = Math.max(0.001, worldSize - 2 * inset)
@@ -3268,6 +3373,11 @@ function Board3D({
                     </Html>
                 )} */}
 
+                {/* Dev: semicircle editing tool (editSemiCircles) — must live inside Canvas */}
+                <SemiCircles
+                    size={topSize}
+                    rectForTile={(ti: number) => propertyRectFor(ti, topSize, pathDirection, indexRotation)}
+                />
             </Canvas>
             {isSelectingTradePlayer && fullGameState && (
 
@@ -3378,236 +3488,255 @@ function Board3D({
                 </Tippy>
             </div>
 
-            <div className='modernButtonContainer'
-                style={{
-                    position: 'absolute',
-                    top: isFullscreen ? 75 * 1.2 : 75,
-                    left: isFullscreen ? 30 * 0.7 : 30,
-                    zIndex: 60,
-                    pointerEvents: 'auto',
-                    display: 'flex',
-                    gap: 8,
-                    background: 'transparent',
-                    border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: isFullscreen ? 40 * 1.5 : 40,
-                    height: isFullscreen ? 40 * 1.5 : 40,
-                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-                }}
-            >
-                <Tippy content={'Ev Al'}
-                    followCursor={true}
-                    plugins={[followCursor]}
-                    offset={[50, -50]}
-                    arrow={false}
-                    appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button className={'no-style modernButton'} style={{
+            {showTurnActions && canBuyHouseAny && (
+                <div className='modernButtonContainer'
+                    style={{
+                        position: 'absolute',
+                        top: isFullscreen ? 123 * 1.3 : 123,
+                        left: isFullscreen ? 30 * 0.7 : 30,
+                        zIndex: 60,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        gap: 8,
+                        background: 'transparent',
+                        border: '0px solid rgba(255,255,255,0.16)',
+                        borderRadius: '50%',
                         width: isFullscreen ? 40 * 1.5 : 40,
                         height: isFullscreen ? 40 * 1.5 : 40,
-                    }}>
-                        <img src={BuyHouseIcon.src} alt="Ev Al" className="icon" style={{
-                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                        }} />
-                    </button>
-                </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-                style={{
-                    position: 'absolute',
-                    // top: 108,
-                    // left: 65,
-                    top: isFullscreen ? 123 * 1.3 : 123,
-                    left: isFullscreen ? 30 * 0.7 : 30,
-                    zIndex: 60,
-                    pointerEvents: 'auto',
-                    display: 'flex',
-                    gap: 8,
-                    background: 'transparent',
-                    border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: isFullscreen ? 40 * 1.5 : 40,
-                    height: isFullscreen ? 40 * 1.5 : 40,
-
-                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-                }}
-            >
-                <Tippy content={'Ev Sat'}
-                    followCursor={true}
-                    plugins={[followCursor]}
-                    offset={[55, -50]}
-                    arrow={false}
-                    appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button className={'no-style modernButton'} style={{
-                        width: isFullscreen ? 40 * 1.5 : 40,
-                        height: isFullscreen ? 40 * 1.5 : 40,
-                    }}>
-                        <img src={SellHouseIcon.src} alt="Ev Sat" className="icon" style={{
-                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                        }} />
-                    </button>
-                </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-                style={{
-                    position: 'absolute',
-                    // top: 108,
-                    // left: 65,
-                    top: isFullscreen ? 171 * 1.35 : 171,
-                    left: isFullscreen ? 30 * 0.7 : 30,
-                    zIndex: 60,
-                    pointerEvents: 'auto',
-                    display: 'flex',
-                    gap: 8,
-                    background: 'transparent',
-                    border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: isFullscreen ? 40 * 1.5 : 40,
-                    height: isFullscreen ? 40 * 1.5 : 40,
-
-                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-                }}
-            >
-                <Tippy content={'Teklif Yap'}
-                    followCursor={true}
-                    plugins={[followCursor]}
-                    offset={[65, -50]}
-                    arrow={false}
-                    appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button
-                        className={'no-style modernButton'}
-                        onClick={onOpenTradeModal}
-                        style={{
+                        backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                    }}
+                >
+                    <Tippy content={'Ev Al'}
+                        followCursor={true}
+                        plugins={[followCursor]}
+                        offset={[50, -50]}
+                        arrow={false}
+                        appendTo={() => document.querySelector('#game') || document.body}
+                        theme="custom">
+                        <button className={'no-style modernButton'} style={{
                             width: isFullscreen ? 40 * 1.5 : 40,
                             height: isFullscreen ? 40 * 1.5 : 40,
                         }}>
+                            <img src={BuyHouseIcon.src} alt="Ev Al" className="icon" style={{
+                                width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                            }} />
+                        </button>
+                    </Tippy>
+                </div>
+            )}
 
-                        <TbCards color='black' size={isFullscreen ? 1.5 * 24 : 24} />
-                    </button>
-                </Tippy>
-            </div>
-
-            <div className='modernButtonContainer'
-                style={{
-                    position: 'absolute',
-                    // top: 60,
-                    // right: 12,
-                    top: isFullscreen ? 75 * 1.2 : 75,
-                    right: isFullscreen ? 27 * 0.6 : 27,
-                    zIndex: 60,
-                    pointerEvents: 'auto',
-                    display: 'flex',
-                    gap: 8,
-                    background: 'transparent',
-                    border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: isFullscreen ? 40 * 1.5 : 40,
-                    height: isFullscreen ? 40 * 1.5 : 40,
-
-                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-                }}
-            >
-                <Tippy content={'Otel Al'}
-                    followCursor={true}
-                    plugins={[followCursor]}
-                    offset={isFullscreen ? [-40, -50] : [55, -50]}
-                    arrow={false}
-                    appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button className={'no-style modernButton'} style={{
+            {showTurnActions && canSellHouseAny && (
+                <div className='modernButtonContainer'
+                    style={{
+                        position: 'absolute',
+                        // top: 108,
+                        // left: 65,
+                        top: isFullscreen ? 171 * 1.35 : 171,
+                        left: isFullscreen ? 30 * 0.7 : 30,
+                        zIndex: 60,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        gap: 8,
+                        background: 'transparent',
+                        border: '0px solid rgba(255,255,255,0.16)',
+                        borderRadius: '50%',
                         width: isFullscreen ? 40 * 1.5 : 40,
                         height: isFullscreen ? 40 * 1.5 : 40,
-                    }}>
-                        <img src={BuyHotelIcon.src} alt="Otel Al" className="icon" style={{
-                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                        }} />
-                    </button>
-                </Tippy>
-            </div>
 
-            <div className='modernButtonContainer'
-                style={{
-                    position: 'absolute',
-                    // top: 108,
-                    // right: 12,
-                    top: isFullscreen ? 123 * 1.3 : 123,
-                    right: isFullscreen ? 27 * 0.6 : 27,
-                    zIndex: 60,
-                    pointerEvents: 'auto',
-                    display: 'flex',
-                    gap: 8,
-                    background: 'transparent',
-                    border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: isFullscreen ? 40 * 1.5 : 40,
-                    height: isFullscreen ? 40 * 1.5 : 40,
+                        backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                    }}
+                >
+                    <Tippy content={'Ev Sat'}
+                        followCursor={true}
+                        plugins={[followCursor]}
+                        offset={[55, -50]}
+                        arrow={false}
+                        appendTo={() => document.querySelector('#game') || document.body}
+                        theme="custom">
+                        <button className={'no-style modernButton'} style={{
+                            width: isFullscreen ? 40 * 1.5 : 40,
+                            height: isFullscreen ? 40 * 1.5 : 40,
+                        }}>
+                            <img src={SellHouseIcon.src} alt="Ev Sat" className="icon" style={{
+                                width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                            }} />
+                        </button>
+                    </Tippy>
+                </div>
+            )}
 
-                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-                }}
-            >
-                <Tippy content={'Otel Sat'}
-                    followCursor={true}
-                    plugins={[followCursor]}
-                    offset={isFullscreen ? [-40, -50] : [60, -50]}
-                    arrow={false}
-                    appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button className={'no-style modernButton'} style={{
+            {(!hideTradeButton && showTurnActions) && (
+                <div className='modernButtonContainer'
+                    style={{
+                        position: 'absolute',
+                        // top: 108,
+                        // left: 65,
+                        top: isFullscreen ? 75 * 1.2 : 75,
+                        left: isFullscreen ? 30 * 0.7 : 30,
+                        zIndex: 60,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        gap: 8,
+                        background: 'transparent',
+                        border: '0px solid rgba(255,255,255,0.16)',
+                        borderRadius: '50%',
                         width: isFullscreen ? 40 * 1.5 : 40,
                         height: isFullscreen ? 40 * 1.5 : 40,
-                    }}>
-                        <img src={SellHotelIcon.src} alt="Otel Sat" className="icon" style={{
-                            width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
-                        }} />
-                    </button>
-                </Tippy>
-            </div>
 
-            <div className='modernButtonContainer'
-                style={{
-                    position: 'absolute',
-                    // top: 108,
-                    // right: 12,
-                    top: isFullscreen ? 171 * 1.35 : 171,
-                    right: isFullscreen ? 27 * 0.6 : 27,
-                    zIndex: 60,
-                    pointerEvents: 'auto',
-                    display: 'flex',
-                    gap: 8,
-                    background: 'transparent',
-                    border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: isFullscreen ? 40 * 1.5 : 40,
-                    height: isFullscreen ? 40 * 1.5 : 40,
+                        backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                    }}
+                >
+                    <Tippy content={'Teklif Yap'}
+                        followCursor={true}
+                        plugins={[followCursor]}
+                        offset={[65, -50]}
+                        arrow={false}
+                        appendTo={() => document.querySelector('#game') || document.body}
+                        theme="custom">
+                        <button
+                            className={'no-style modernButton'}
+                            onClick={onOpenTradeModal}
+                            style={{
+                                width: isFullscreen ? 40 * 1.5 : 40,
+                                height: isFullscreen ? 40 * 1.5 : 40,
+                            }}>
 
-                    backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
-                }}
-            >
-                <Tippy content={'İpotek Yap'}
-                    followCursor={true}
-                    plugins={[followCursor]}
-                    offset={isFullscreen ? [-45, -50] : [70, -50]}
-                    arrow={false}
-                    appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button className={'no-style modernButton'} style={{
+                            <MdSell color='black' size={isFullscreen ? 1.5 * 24 : 24} />
+                        </button>
+                    </Tippy>
+                </div>
+            )}
+
+            {showTurnActions && canBuyHotelAny && (
+                <div className='modernButtonContainer'
+                    style={{
+                        position: 'absolute',
+                        // top: 60,
+                        // right: 12,
+
+                        top: isFullscreen ? 123 * 1.3 : 123,
+                        right: isFullscreen ? 27 * 0.6 : 27,
+                        zIndex: 60,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        gap: 8,
+                        background: 'transparent',
+                        border: '0px solid rgba(255,255,255,0.16)',
+                        borderRadius: '50%',
                         width: isFullscreen ? 40 * 1.5 : 40,
                         height: isFullscreen ? 40 * 1.5 : 40,
-                    }}>
-                        <img
-                            src={MortgageIcon.src}
-                            alt="İpotek Yap"
-                            className="icon"
-                            width={isFullscreen ? 24 * 1.5 : 24}
-                            height={isFullscreen ? 24 * 1.5 : 24}
-                        />
-                    </button>
-                </Tippy>
-            </div>
+
+                        backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                    }}
+                >
+                    <Tippy content={'Otel Al'}
+                        followCursor={true}
+                        plugins={[followCursor]}
+                        offset={isFullscreen ? [-40, -50] : [55, -50]}
+                        arrow={false}
+                        appendTo={() => document.querySelector('#game') || document.body}
+                        theme="custom">
+                        <button className={'no-style modernButton'} style={{
+                            width: isFullscreen ? 40 * 1.5 : 40,
+                            height: isFullscreen ? 40 * 1.5 : 40,
+                        }}>
+                            <img src={BuyHotelIcon.src} alt="Otel Al" className="icon" style={{
+                                width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                            }} />
+                        </button>
+                    </Tippy>
+                </div>
+            )}
+
+            {showTurnActions && canSellHotelAny && (
+                <div className='modernButtonContainer'
+                    style={{
+                        position: 'absolute',
+                        // top: 108,
+                        // right: 12,
+
+                        top: isFullscreen ? 171 * 1.35 : 171,
+                        right: isFullscreen ? 27 * 0.6 : 27,
+                        zIndex: 60,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        gap: 8,
+                        background: 'transparent',
+                        border: '0px solid rgba(255,255,255,0.16)',
+                        borderRadius: '50%',
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+
+                        backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                    }}
+                >
+                    <Tippy content={'Otel Sat'}
+                        followCursor={true}
+                        plugins={[followCursor]}
+                        offset={isFullscreen ? [-40, -50] : [60, -50]}
+                        arrow={false}
+                        appendTo={() => document.querySelector('#game') || document.body}
+                        theme="custom">
+                        <button className={'no-style modernButton'} style={{
+                            width: isFullscreen ? 40 * 1.5 : 40,
+                            height: isFullscreen ? 40 * 1.5 : 40,
+                        }}>
+                            <img src={SellHotelIcon.src} alt="Otel Sat" className="icon" style={{
+                                width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
+                            }} />
+                        </button>
+                    </Tippy>
+                </div>
+            )}
+
+            {showTurnActions && canMortgageAny && (
+                <div className='modernButtonContainer'
+                    style={{
+                        position: 'absolute',
+                        // top: 108,
+                        // right: 12,
+
+
+                        top: isFullscreen ? 75 * 1.2 : 75,
+                        right: isFullscreen ? 27 * 0.6 : 27,
+                        zIndex: 60,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        gap: 8,
+                        background: 'transparent',
+                        border: '0px solid rgba(255,255,255,0.16)',
+                        borderRadius: '50%',
+                        width: isFullscreen ? 40 * 1.5 : 40,
+                        height: isFullscreen ? 40 * 1.5 : 40,
+
+                        backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
+                    }}
+                >
+                    <Tippy content={'İpotek Yap'}
+                        followCursor={true}
+                        plugins={[followCursor]}
+                        offset={isFullscreen ? [-45, -50] : [70, -50]}
+                        arrow={false}
+                        appendTo={() => document.querySelector('#game') || document.body}
+                        theme="custom">
+                        <button className={'no-style modernButton'} style={{
+                            width: isFullscreen ? 40 * 1.5 : 40,
+                            height: isFullscreen ? 40 * 1.5 : 40,
+                        }}>
+                            {/* <img
+                                src={MortgageIcon.src}
+                                alt="İpotek Yap"
+                                className="icon"
+                                width={isFullscreen ? 24 * 1.5 : 24}
+                                height={isFullscreen ? 24 * 1.5 : 24}
+                            /> */}
+
+                            <FaHouseLock color='black' size={isFullscreen ? 1.5 * 24 : 24} />
+
+                        </button>
+                    </Tippy>
+                </div>
+            )}
 
 
             {/* Overlay (2D) children inside the scene container */}
@@ -3640,8 +3769,3 @@ function Board3D({
 }
 
 export default Board3D
-
-
-
-
-

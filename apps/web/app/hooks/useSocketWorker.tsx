@@ -33,8 +33,16 @@ export const useSocketWorker = () => {
                     setState(payload.state);
                 } else if (payload.type === 'tradeProposal') {
                     try { window.dispatchEvent(new CustomEvent('monopoly:tradeProposal', { detail: payload.proposal })) } catch {}
+                } else if (payload.type === 'tradeTimerStart') {
+                    try { window.dispatchEvent(new CustomEvent('monopoly:tradeTimerStart', { detail: payload })) } catch {}
+                } else if (payload.type === 'tradeTimerEnd') {
+                    try { window.dispatchEvent(new CustomEvent('monopoly:tradeTimerEnd', { detail: payload })) } catch {}
                 } else if (payload.type === 'msg') {
-                    try { console.log('[MSG]', payload.text) } catch {}
+                    try {
+                        console.log('[MSG]', payload.text)
+                        // Broadcast to app for lightweight toast/notice UIs
+                        window.dispatchEvent(new CustomEvent('monopoly:msg', { detail: String(payload.text || '') }))
+                    } catch {}
                 } else if (payload.type === 'error') {
                     try {
                         const msg = String(payload.text || '')

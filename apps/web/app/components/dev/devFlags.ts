@@ -27,6 +27,7 @@ export type DevFlag =
   | 'getCurrentCamData'
   | 'houseZones'
   | 'editPropertyZones'
+  | 'editSemiCircles'
   | 'buyHouse'
 
 const LS_PREFIX = 'monopoly.dev.flag.'

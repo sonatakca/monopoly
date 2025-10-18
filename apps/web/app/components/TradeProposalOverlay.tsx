@@ -29,9 +29,11 @@ type Props = {
   onDecline: (p: TradeProposal) => void;
   onCounter: (p: TradeProposal) => void;
   isFullscreen?: boolean;
+  // Optional absolute timestamp (ms) when the 15s response window ends
+  expiresAt?: number;
 };
 
-export default function TradeProposalOverlay({ players, order, meId, proposal, onAccept, onDecline, onCounter, isFullscreen }: Props) {
+export default function TradeProposalOverlay({ players, order, meId, proposal, onAccept, onDecline, onCounter, isFullscreen, expiresAt }: Props) {
   if (!players || !order || !meId || !proposal) return null;
 
   const fromPlayer = players[proposal.from ?? ''];
@@ -83,6 +85,17 @@ export default function TradeProposalOverlay({ players, order, meId, proposal, o
     gap: '20px',
     padding: '20px',
   };
+  const [now, setNow] = React.useState<number>(Date.now());
+  React.useEffect(() => {
+    if (!expiresAt) return;
+    const t = window.setInterval(() => setNow(Date.now()), 200) as any;
+    return () => clearInterval(t);
+  }, [expiresAt]);
+  const remainingSec: number | null = (() => {
+    if (!expiresAt) return null;
+    const m = Math.max(0, expiresAt - now);
+    return Math.ceil(m / 1000);
+  })();
 
   const columnStyle: React.CSSProperties = {
     display: 'flex',
@@ -190,6 +203,11 @@ export default function TradeProposalOverlay({ players, order, meId, proposal, o
 
   return (
     <div style={panelStyle}>
+      {isRecipient && remainingSec != null && (
+        <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 999, fontWeight: 800, zIndex: 999 }}>
+          Yanıt süresi: {remainingSec}s
+        </div>
+      )}
       {/* LEFT COLUMN (Me) */}
       <div style={columnStyle}>
         <PlayerCard
@@ -252,4 +270,3 @@ export default function TradeProposalOverlay({ players, order, meId, proposal, o
     </div>
   );
 }
-

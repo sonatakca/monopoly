@@ -165,3 +165,6 @@ export type ServerEvent =
   | { type: 'error'; text: string }
   // Trading (broadcast to all clients in room)
   | { type: 'tradeProposal'; proposal: TradeProposal }
+  // Trade timer signaling for 15s response windows
+  | { type: 'tradeTimerStart'; from: string; to: string; phase: 'proposal' | 'counter'; endsAt: number }
+  | { type: 'tradeTimerEnd'; from: string; to: string; phase: 'proposal' | 'counter'; outcome: 'accepted' | 'declined' | 'timeout' }

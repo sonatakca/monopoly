@@ -542,6 +542,19 @@ export default function Home() {
   const TRADE_PROPOSAL_WINDOW_MS = 30_000;
   const [tradeProposalExpireAt, setTradeProposalExpireAt] = useState<number | null>(null);
   const lastProposalTurnRef = useRef<number | null>(null);
+  // Server-driven 15s trade countdown for the recipient
+  const [tradeTimer, setTradeTimer] = useState<{ from: string; to: string; phase: 'proposal' | 'counter'; endsAt: number } | null>(null)
+
+  // Top-line notice (just under slot dice)
+  const [topNotice, setTopNotice] = useState<string | null>(null)
+  const topNoticeTimerRef = useRef<number | null>(null)
+  const clearTopNotice = (delay = 0) => {
+    if (topNoticeTimerRef.current) { window.clearTimeout(topNoticeTimerRef.current); topNoticeTimerRef.current = null }
+    if (delay <= 0) { setTopNotice(null); return }
+    topNoticeTimerRef.current = window.setTimeout(() => { setTopNotice(null); topNoticeTimerRef.current = null }, delay) as any
+  }
+  // Track a pending outgoing trade to show "waiting for response"
+  const pendingTradeToRef = useRef<string | null>(null)
 
   const openTrade = (otherPlayerId: string) => {
     setTradeState({ isOpen: true, otherPlayerId });
@@ -570,7 +583,24 @@ export default function Home() {
     const onProposal = (e: any) => {
       const p: TradeProposal | undefined = e?.detail
       if (!p) return
-      if (p.to && p.to === meId) setTradeProposal(p)
+      if (p.to && p.to === meId) {
+        setTradeProposal(p)
+        // If I previously sent to this same player, treat this as a counter-offer
+        if (pendingTradeToRef.current && pendingTradeToRef.current === p.from) {
+          const fromName = (state as any)?.players?.[p.from]?.name || 'Oyuncu'
+          setTopNotice(`${fromName} karsi teklif gonderdi — degerlendir…`)
+          clearTopNotice(TRADE_PROPOSAL_WINDOW_MS)
+          pendingTradeToRef.current = null
+        }
+      }
+      // If I am the sender, show a waiting notice until response
+      if (p.from && p.from === meId) {
+        pendingTradeToRef.current = String(p.to)
+        const toName = (state as any)?.players?.[p.to]?.name || 'Oyuncu'
+        setTopNotice(`Takas teklifi ${toName}'a gönderildi — yanıt bekleniyor…`)
+        // Fallback auto-clear after the proposal window
+        clearTopNotice(TRADE_PROPOSAL_WINDOW_MS)
+      }
       // Start proposal window (30s total) once per turn; do not reset on subsequent proposals
       const curTurn = state?.turnIndex ?? null
       if (curTurn != null) {
@@ -586,8 +616,56 @@ export default function Home() {
       }
     }
     window.addEventListener('monopoly:tradeProposal', onProposal as any)
+    const onTradeTimerStart = (e: any) => {
+      try {
+        const d = e?.detail || {}
+        // Only track if it's targeted to me or my sent counter window
+        setTradeTimer({ from: d.from, to: d.to, phase: d.phase, endsAt: d.endsAt })
+        if (d && d.to === meId) {
+          const fromName = (state as any)?.players?.[d.from]?.name || 'Oyuncu'
+          setTopNotice(`${fromName} takas teklif etti — ${Math.ceil((d.endsAt - Date.now()) / 1000)} sn içinde yanıtla`)
+          clearTopNotice(30_500)
+        }
+      } catch {}
+    }
+    const onTradeTimerEnd = (e: any) => {
+      try {
+        const d = e?.detail || {}
+        setTradeTimer(null)
+        // Clear incoming proposal overlay on timeout/decline/accept
+        if (tradeProposal) setTradeProposal(null)
+        // Clear any local pending outbound marker as the window ended
+        pendingTradeToRef.current = null
+        if (d?.outcome === 'timeout' && d?.to === meId) {
+          setTopNotice('Takas teklifine zamanında yanıt verilmedi')
+          clearTopNotice(2500)
+        }
+      } catch {}
+    }
+    window.addEventListener('monopoly:tradeTimerStart', onTradeTimerStart as any)
+    window.addEventListener('monopoly:tradeTimerEnd', onTradeTimerEnd as any)
     return () => window.removeEventListener('monopoly:tradeProposal', onProposal as any)
-  }, [meId, state?.turnIndex, tradeProposalExpireAt])
+  }, [meId, state?.turnIndex, tradeProposalExpireAt, tradeProposal])
+
+  // (countdown is handled inside TradeProposalOverlay)
+  // Listen for server text messages to surface accept/decline results
+  useEffect(() => {
+    const onMsg = (e: any) => {
+      const text: string = String(e?.detail || '')
+      const t = text.normalize('NFKD').toLowerCase()
+      // Ignore generic broadcast for proposals to avoid clobbering waiting/counter text
+      if (t.includes('takas') && (t.includes('gonderdi') || t.includes('gönderdi'))) return
+      // If a trade finished or was declined, show a short confirmation
+      if (t.includes('takas') && (t.includes('reddetti') || t.includes('tamamlandi'))) {
+        // Clear any pending waiting notice
+        pendingTradeToRef.current = null
+        setTopNotice(text)
+        clearTopNotice(t.includes('reddetti') ? 5000 : 4000)
+      }
+    }
+    window.addEventListener('monopoly:msg', onMsg as any)
+    return () => window.removeEventListener('monopoly:msg', onMsg as any)
+  }, [])
   // Auto-close proposal overlay on expiry; do not reset when new proposals arrive in same turn
   useEffect(() => {
     if (!tradeProposalExpireAt) return
@@ -1053,6 +1131,15 @@ export default function Home() {
   const isMyTurn = !!(state && state.order?.length && state.order[state.turnIndex] === meId);
   const isAdmin = !!(state && (state as any).adminId === meId)
   const allReady = !!(state && state.order?.every(id => (state as any).ready?.[id]))
+  // Hide trade initiation if it's not my turn and I have an outbound proposal pending
+  // Consider a trade pending if either the server signaled an active timer for my outbound offer,
+  // or we've locally marked an outbound target awaiting response.
+  const outgoingTradePending = useMemo(() => {
+    const serverPending = !!(tradeTimer && meId && tradeTimer.from === meId)
+    const localPending = !!pendingTradeToRef.current
+    return serverPending || localPending
+  }, [tradeTimer, meId, tradeProposal, topNotice])
+  const hideTradeButton = !!(!isMyTurn && outgoingTradePending)
   // Turn controls: allow roll if no dice yet, or doubles rolled; allow end turn if rolled and not doubles
   const canRoll = !!(isMyTurn && (!((state as any)?.lastDice) || ((state as any)?.lastDice?.isDouble === true)))
   const canEndTurn = !!(isMyTurn && !!((state as any)?.lastDice) && ((state as any)?.lastDice?.isDouble !== true))
@@ -1560,14 +1647,16 @@ export default function Home() {
 
               isFullscreen={isFullscreen}
               onToggleFullscreen={toggleFullscreen}
-              onOpenTradeModal={() => setIsSelectingTradePlayer(true)}
-              onInitiateTrade={openTrade}
+              onOpenTradeModal={hideTradeButton ? () => {} : () => setIsSelectingTradePlayer(true)}
+              onInitiateTrade={hideTradeButton ? () => {} : openTrade}
               tradeActive={tradeState.isOpen}
               tradePlayerIds={me ? [me.id, tradeState.otherPlayerId] : []}
               tradeInitialMoneyToGive={tradePrefill?.moneyToGive}
               tradeInitialMoneyToGet={tradePrefill?.moneyToGet}
               tradeInitialPropertiesToGive={tradePrefill?.propertiesToGive}
               tradeInitialPropertiesToGet={tradePrefill?.propertiesToGet}
+              hideTradeButton={hideTradeButton || !isMyTurn}
+              showTurnActions={!!isMyTurn}
 
               //default states
               onBuyHouse={() => alert('Ev Al tıklandı')}
@@ -1594,16 +1683,37 @@ export default function Home() {
               currentPlayerId={state?.order?.[state?.turnIndex ?? 0]}
               activityKey={activityTick}
               showHud={!!state?.started}
-              timerFrozen={!!(anyAnimatingRoute || buyModal || ((state as any)?.auction?.active))}
-              overlayChildren={state?.lastDice && !getDevFlag('disableDice') ? (
-                <DiceSlots
-                  d1={state.lastDice.d1 as 1 | 2 | 3 | 4 | 5 | 6}
-                  d2={state.lastDice.d2 as 1 | 2 | 3 | 4 | 5 | 6}
-                  trigger={rollTick}
-                  align="center"
-                  size={30}
-                />
-              ) : null}
+              timerFrozen={!!(anyAnimatingRoute || buyModal || ((state as any)?.auction?.active) || tradeTimer)}
+              overlayChildren={(() => {
+                const showDice = !!(state?.lastDice && !getDevFlag('disableDice'))
+                const showNotice = !!topNotice
+                if (!showDice && !showNotice) return null
+                return (
+                  <div style={{ display: 'grid', placeItems: 'center', gap: 6, pointerEvents: 'none' }}>
+                    {showDice && (
+                      <DiceSlots
+                        d1={state!.lastDice!.d1 as 1 | 2 | 3 | 4 | 5 | 6}
+                        d2={state!.lastDice!.d2 as 1 | 2 | 3 | 4 | 5 | 6}
+                        trigger={rollTick}
+                        align="center"
+                        size={30}
+                      />
+                    )}
+                    {showNotice && (
+                      <div style={{
+                        padding: '6px 10px',
+                        borderRadius: 10,
+                        background: 'rgba(0,0,0,0.55)',
+                        color: '#fff',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        border: '1px solid rgba(255,255,255,0.25)',
+                        backdropFilter: 'saturate(140%) blur(6px)'
+                      }}>{topNotice}</div>
+                    )}
+                  </div>
+                )
+              })()}
               onCardRectsChange={useCallback((map: Record<string, DOMRect>) => {
                 setCardRects(prev => {
                   const a = Object.keys(prev), b = Object.keys(map)
@@ -1702,6 +1812,8 @@ export default function Home() {
                 meId={meId}
                 proposal={tradeProposal}
                 isFullscreen={isFullscreen}
+                // Show 15s server timer to the recipient
+                expiresAt={(tradeTimer && tradeTimer.to === meId) ? tradeTimer.endsAt : undefined}
                 onDecline={(p) => { try { send({ type: 'declineTrade', proposal: p } as any) } catch {}; setTradeProposal(null) }}
                 onCounter={(p) => {
                   // Map into viewer-centric initial values
@@ -2101,16 +2213,3 @@ export default function Home() {
     </main >
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
