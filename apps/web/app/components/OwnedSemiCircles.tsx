@@ -113,7 +113,7 @@ export default function OwnedSemiCircles({
       const grad = ctx.createLinearGradient(0, 0, 0, h)
       // Top: solid, Bottom: ~60% (like #xx99)
       grad.addColorStop(0, `rgba(${r},${g},${b},1)`)
-      grad.addColorStop(1, `rgba(${r},${g},${b},0.6)`)
+      grad.addColorStop(1, `rgba(${r},${g},${b},1)`)
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, w, h)
       const tex = new THREE.CanvasTexture(canvas)
@@ -130,6 +130,13 @@ export default function OwnedSemiCircles({
   const groupRefs = useRef<Record<number, THREE.Group | null>>({})
   const matRefs = useRef<Record<number, THREE.MeshStandardMaterial | null>>({})
   const tilesRef = useRef<number[]>(tiles)
+  // Track previous colors and tiles to detect transfers
+  const prevColorsRef = useRef<Record<number, string>>({})
+  const prevTilesRef = useRef<Set<number>>(new Set())
+  // Outgoing animation data when ownership changes hands or is removed
+  const outAnimsRef = useRef<Record<number, { start: number; color: string }>>({})
+  const outGroupRefs = useRef<Record<number, THREE.Group | null>>({})
+  const outMatRefs = useRef<Record<number, THREE.MeshStandardMaterial | null>>({})
 
   useEffect(() => {
     tilesRef.current = tiles
@@ -142,6 +149,28 @@ export default function OwnedSemiCircles({
       const k = Number(key)
       if (!tiles.includes(k)) delete appearStartRef.current[k]
     }
+    // Detect removed tiles and trigger outgoing animation
+    const prevTiles = prevTilesRef.current
+    const prevColors = prevColorsRef.current
+    prevTiles.forEach((ti) => {
+      if (!tiles.includes(ti)) {
+        const prevColor = prevColors[ti] || color
+        outAnimsRef.current[ti] = { start: now, color: prevColor }
+      }
+    })
+    // Detect color changes for still-owned tiles and trigger outgoing + restart incoming
+    for (const ti of tiles) {
+      const newColor = (colorByTile && colorByTile[ti]) || color
+      const prevColor = prevColors[ti]
+      if (prevColor && prevColor !== newColor) {
+        outAnimsRef.current[ti] = { start: now, color: prevColor }
+        // Delay the incoming animation until outgoing finishes
+        appearStartRef.current[ti] = now + 520
+      }
+    }
+    // Update prev snapshots
+    prevColorsRef.current = Object.fromEntries(tiles.map((ti) => [ti, (colorByTile && colorByTile[ti]) || color]))
+    prevTilesRef.current = new Set(tiles)
   }, [tiles])
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
@@ -157,12 +186,38 @@ export default function OwnedSemiCircles({
     const list = tilesRef.current
     for (const ti of list) {
       const start = appearStartRef.current[ti] || now
-      const p = clamp01((now - start) / duration)
+      const raw = (now - start) / duration
+      if (raw <= 0) {
+        const g0 = groupRefs.current[ti]
+        const m0 = matRefs.current[ti]
+        if (g0) g0.scale.setScalar(0.8)
+        if (m0) m0.opacity = 0
+        continue
+      }
+      const p = clamp01(raw)
       const s = 0.8 + 0.2 * easeOutBack(p)
       const g = groupRefs.current[ti]
       const m = matRefs.current[ti]
       if (g) g.scale.setScalar(s)
       if (m) m.opacity = 0.15 + 0.85 * p
+    }
+    // Animate outgoing (reverse) and clean up after finish
+    const outKeys = Object.keys(outAnimsRef.current)
+    for (const key of outKeys) {
+      const ti = Number(key)
+      const rec = outAnimsRef.current[ti]
+      if (!rec) continue
+      const p = clamp01((now - rec.start) / duration)
+      const g = outGroupRefs.current[ti]
+      const m = outMatRefs.current[ti]
+      const s = 1.0 - 0.2 * p
+      if (g) g.scale.setScalar(Math.max(0.0001, s))
+      if (m) m.opacity = 1.0 - p
+      if (p >= 1) {
+        delete outAnimsRef.current[ti]
+        if (outGroupRefs.current[ti]) outGroupRefs.current[ti] = null
+        if (outMatRefs.current[ti]) outMatRefs.current[ti] = null
+      }
     }
   })
 
@@ -225,12 +280,61 @@ export default function OwnedSemiCircles({
               <meshStandardMaterial
                 color={'#ffffff'}
                 map={mapTex as any}
-                transparent
+                // transparent
                 roughness={0.5}
                 metalness={0.2}
                 side={2}
                 opacity={0}
                 ref={el => { matRefs.current[ti] = el as any }}
+              />
+            </mesh>
+          </group>
+        )
+      })}
+      {/* Outgoing reverse-animating semicircles (color the previous owner) */}
+      {Object.keys(outAnimsRef.current).map((key) => {
+        const ti = Number(key)
+        if (Number.isNaN(ti)) return null
+        const rect = rectForTile(ti)
+        if (!rect || rect.edge === 'corner') return null
+        const tx = map[String(ti)] || {}
+        const baseW = rect.w, baseD = rect.d
+        const sx = baseW * (tx.wScale ?? DEFAULT_STYLE.wScale)
+        const sz = baseD * (tx.dScale ?? DEFAULT_STYLE.dScale)
+        let cx = rect.cx + (tx.dx || 0)
+        let cz = rect.cz + (tx.dz || 0)
+        const dw = (sx - baseW) / 2
+        const dd = (sz - baseD) / 2
+        switch (rect.edge) {
+          case 'bottom': cx += dw; cz += dd; break
+          case 'top': cx += dw; cz -= dd; break
+          case 'left': cz += dw; cx += dd; break
+          case 'right': cx += dw; cx -= dd; break
+        }
+        const height = tx.height ?? DEFAULT_STYLE.height
+        const baseY = 0.008
+        const cy = baseY + (tx.dy ?? DEFAULT_STYLE.dy)
+        const radius = tx.radius ?? Math.min(sx, sz) * 0.40
+        const pos: [number, number, number] = [cx, cy + height / 2 + 0.001, cz]
+        const rotX = tx.rotX ?? DEFAULT_STYLE.rotX
+        const rotY = tx.rotY ?? 0
+        const rotZ = tx.rotZ ?? DEFAULT_STYLE.rotZ
+        const rec = outAnimsRef.current[ti]
+        const outColor = rec?.color || color
+        const outTex = gradientForColor(outColor)
+        return (
+          <group key={`owned-sc-out-${ti}`} position={pos} rotation={[rotX, rotY, rotZ]} ref={el => { outGroupRefs.current[ti] = el }}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+              <cylinderGeometry args={[radius, radius, height, 32, 1, false, 0, Math.PI]} />
+              <meshStandardMaterial
+                color={'#ffffff'}
+                map={outTex as any}
+                transparent
+                roughness={0.5}
+                metalness={0.2}
+                side={2}
+                opacity={1}
+                ref={el => { outMatRefs.current[ti] = el as any }}
               />
             </mesh>
           </group>
