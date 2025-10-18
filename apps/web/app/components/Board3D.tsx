@@ -3,6 +3,7 @@ import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
 import { Html, OrbitControls, useTexture } from '@react-three/drei'
 import PropertyCard3D from './PropertyCard3D'
 import SemiCircles from './SemiCircles'
+import OwnedSemiCircles from './OwnedSemiCircles'
 import PlayersStrip from './PlayersStrip'
 import PropertyCardModal3D from './PropertyCardModal3D'
 import { ensureDevFlagsAPI, getDevFlag } from '../components/dev/devFlags'
@@ -28,6 +29,7 @@ import { followCursor } from 'tippy.js';
 import { TbCards } from "react-icons/tb";
 import MortgageIcon from './icons/MortgageIcon.png';
 import PlayerSelectionModal from './PlayerSelectionModal';
+import { PLAYER_DOTS } from './playerColors'
 import TradeOverlay from './TradeOverlay';
 import { FaHouseLock } from "react-icons/fa6";
 import { MdSell } from "react-icons/md";
@@ -1958,6 +1960,63 @@ function Board3D({
 }: Props) {
 
     const players = fullGameState?.players || {};
+    // Tiles owned by any player (buyables: PROPERTY, STATION, UTILITY)
+    const ownedBuyableTiles = useMemo(() => {
+        const set = new Set<number>()
+        try {
+            const spaces: any[] = (board as any).spaces || []
+            Object.values(players || {}).forEach((pl: any) => {
+                const props: number[] = pl?.properties || []
+                for (const id of props) {
+                    const t = spaces?.[id]?.type
+                    if (t === 'PROPERTY' || t === 'STATION' || t === 'UTILITY') set.add(id)
+                }
+            })
+        } catch { }
+        return set
+    }, [players])
+
+    // Map each owned tile -> owner player id
+    const tileOwner: Record<number, string> = useMemo(() => {
+        const m: Record<number, string> = {}
+        try {
+            Object.entries(players || {}).forEach(([pid, pl]: any) => {
+                const props: number[] = pl?.properties || []
+                for (const id of props) m[id] = pid
+            })
+        } catch { }
+        return m
+    }, [players])
+
+    // Compute player dot colors based on PlayersStrip slotting (8 centered slots)
+    const playerDotColor: Record<string, string> = useMemo(() => {
+        const map: Record<string, string> = {}
+        try {
+            const orderArr: string[] = fullGameState?.order || []
+            const list = orderArr.map(id => players[id]).filter(Boolean) as any[]
+            const SLOTS = 8
+            const offset = Math.max(0, Math.floor((SLOTS - list.length) / 2))
+            for (let i = 0; i < list.length && (i + offset) < SLOTS; i++) {
+                const p = list[i]
+                const slotIndex = i + offset
+                map[p.id] = PLAYER_DOTS[slotIndex % PLAYER_DOTS.length]
+            }
+        } catch { }
+        return map
+    }, [players, fullGameState?.order])
+
+    // Color per tile based on owner dot color
+    const colorByTile: Record<number, string> = useMemo(() => {
+        const m: Record<number, string> = {}
+        try {
+            ownedBuyableTiles.forEach(id => {
+                const pid = tileOwner[id]
+                const c = (pid && playerDotColor[pid]) || undefined
+                if (c) m[id] = c
+            })
+        } catch { }
+        return m
+    }, [ownedBuyableTiles, tileOwner, playerDotColor])
     const order = fullGameState?.order || [];
     const [, forceUpdate] = useState(0);
 
@@ -3373,6 +3432,13 @@ function Board3D({
                     </Html>
                 )} */}
 
+                {/* Owned semicircles (visible to all viewers) */}
+                <OwnedSemiCircles
+                    size={topSize}
+                    rectForTile={(ti: number) => propertyRectFor(ti, topSize, pathDirection, indexRotation)}
+                    ownedTiles={ownedBuyableTiles}
+                    colorByTile={colorByTile}
+                />
                 {/* Dev: semicircle editing tool (editSemiCircles) — must live inside Canvas */}
                 <SemiCircles
                     size={topSize}

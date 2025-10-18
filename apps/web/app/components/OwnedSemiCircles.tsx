@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useMemo } from 'react'
+import * as THREE from 'three'
 import bakedSemiCirclesRaw from '../../public/baked-in-content/semi-circle-zones.json'
 
 type Edge = 'top' | 'bottom' | 'left' | 'right' | 'corner'
@@ -74,11 +75,13 @@ export default function OwnedSemiCircles({
   rectForTile,
   ownedTiles,
   color = '#e11d48',
+  colorByTile,
 }: {
   size: number
   rectForTile: (tile: number) => Rect
   ownedTiles: Set<number>
   color?: string
+  colorByTile?: Record<number, string>
 }) {
   const map = useMemo(() => readMap(), [])
 
@@ -90,6 +93,36 @@ export default function OwnedSemiCircles({
   }, [map, ownedTiles])
 
   if (tiles.length === 0) return null
+
+  // Cache gradient textures per color
+  const gradientForColor = useMemo(() => {
+    const cache = new Map<string, THREE.Texture>()
+    function hexToRgb(hex: string): { r: number; g: number; b: number } {
+      const s = hex.replace('#', '')
+      const n = parseInt(s.length === 3 ? s.split('').map(c => c + c).join('') : s, 16)
+      return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
+    }
+    function make(texColor: string): THREE.Texture {
+      if (cache.has(texColor)) return cache.get(texColor) as THREE.Texture
+      const { r, g, b } = hexToRgb(texColor)
+      const w = 4, h = 64
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+      const grad = ctx.createLinearGradient(0, 0, 0, h)
+      // Top: solid, Bottom: ~60% (like #xx99)
+      grad.addColorStop(0, `rgba(${r},${g},${b},1)`)
+      grad.addColorStop(1, `rgba(${r},${g},${b},1)`)
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, w, h)
+      const tex = new THREE.CanvasTexture(canvas)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.needsUpdate = true
+      cache.set(texColor, tex)
+      return tex
+    }
+    return make
+  }, [])
 
   return (
     <group>
@@ -130,6 +163,8 @@ export default function OwnedSemiCircles({
         const rotY = tx.rotY ?? 0
         const rotZ = tx.rotZ ?? DEFAULT_STYLE.rotZ
 
+        const tileColor = (colorByTile && colorByTile[ti]) || color
+        const mapTex = gradientForColor(tileColor)
         return (
           <group key={`owned-sc-${ti}`} position={pos} rotation={[rotX, rotY, rotZ]}>
             <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={3}>
@@ -145,7 +180,14 @@ export default function OwnedSemiCircles({
                   Math.PI // thetaLength (semi-circle)
                 ]}
               />
-              <meshStandardMaterial color={color} roughness={0.5} metalness={0.2} side={2} />
+              <meshStandardMaterial
+                color={'#ffffff'}
+                map={mapTex as any}
+                // transparent
+                roughness={0.5}
+                metalness={0.2}
+                side={2}
+              />
             </mesh>
           </group>
         )
