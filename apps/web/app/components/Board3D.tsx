@@ -6,6 +6,9 @@ import SemiCircles from './SemiCircles'
 import OwnedSemiCircles from './OwnedSemiCircles'
 import PlayersStrip from './PlayersStrip'
 import PropertyCardModal3D from './PropertyCardModal3D'
+import OwnedHouses from './OwnedHouses'
+import BuyHouseModal from './BuyHouseModal'
+import SellHouseModal from './SellHouseModal'
 import { ensureDevFlagsAPI, getDevFlag } from '../components/dev/devFlags'
 import board from '@shared/board.tr.json'
 import { Suspense, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -103,16 +106,20 @@ const BAKED_HOUSE_ZONES: HouseZonesMap = (() => {
 })();
 
 function readHouseZones(): HouseZonesMap {
+    let base: HouseZonesMap = { ...BAKED_HOUSE_ZONES };
     try {
         const raw = typeof window !== 'undefined' ? localStorage.getItem(HOUSE_ZONES_LS) : null;
         if (raw) {
             const parsed = JSON.parse(raw);
-            if (Object.keys(parsed).length > 0) {
-                return parsed;
+            if (parsed && typeof parsed === 'object') {
+                // Merge localStorage edits on top of the baked-in defaults
+                for (const k of Object.keys(parsed)) {
+                    base[k] = { ...base[k], ...parsed[k] };
+                }
             }
         }
     } catch { }
-    return BAKED_HOUSE_ZONES;
+    return base;
 }
 function writeHouseZones(m: HouseZonesMap) {
     try { if (typeof window !== 'undefined') localStorage.setItem(HOUSE_ZONES_LS, JSON.stringify(m)); } catch { }
@@ -2150,6 +2157,48 @@ function Board3D({
         return props.some(id => isProperty(id) && !isMortgaged(id))
     }, [me])
 
+    // Compute eligible tiles for house buy/sell following even-building rules
+    const buyableHouseTiles = useMemo(() => {
+        if (!me) return [] as number[]
+        const out: number[] = []
+        const owned = new Set<number>(me.properties || [])
+        for (const [color, ids] of Object.entries(colorSets)) {
+            if (!ownsFullSet(color, owned)) continue
+            const levels = ids.map(id => (me.hotels as any)?.[id] ? 5 : ((me.houses as any)?.[id] || 0))
+            const minLevel = Math.min(...levels)
+            for (const id of ids) {
+                const sp = propOf(id)
+                const hasHotel = !!((me.hotels as any)?.[id])
+                const thisLevel = ((me.houses as any)?.[id] || 0)
+                if (sp?.type !== 'PROPERTY') continue
+                if (!sp?.mortgaged && !hasHotel && thisLevel < 4 && thisLevel === minLevel) out.push(id)
+            }
+        }
+        return out
+    }, [me, colorSets])
+
+    const sellableHouseTiles = useMemo(() => {
+        if (!me) return [] as number[]
+        const out: number[] = []
+        const owned = new Set<number>(me.properties || [])
+        for (const [color, ids] of Object.entries(colorSets)) {
+            if (!ownsFullSet(color, owned)) continue
+            const levels = ids.map(id => (me.hotels as any)?.[id] ? 5 : ((me.houses as any)?.[id] || 0))
+            const maxLevel = Math.max(...levels)
+            for (const id of ids) {
+                const sp = propOf(id)
+                const hasHotel = !!((me.hotels as any)?.[id])
+                const thisLevel = ((me.houses as any)?.[id] || 0)
+                if (sp?.type !== 'PROPERTY') continue
+                if (!hasHotel && thisLevel > 0 && thisLevel === maxLevel) out.push(id)
+            }
+        }
+        return out
+    }, [me, colorSets])
+
+    const [buyHouseOpen, setBuyHouseOpen] = useState(false)
+    const [sellHouseOpen, setSellHouseOpen] = useState(false)
+
     const inset = Math.max(0, Math.min(outfill, worldSize / 2 - 0.001))
     const topSize = Math.max(0.001, worldSize - 2 * inset)
 
@@ -2765,6 +2814,12 @@ function Board3D({
                 {(getDevFlag('showZones') || getDevFlag('editZones')) && (
                     <ZonesOverlay S={topSize} dir={pathDirection} rot={indexRotation} showLabels />
                 )}
+                {/* Owned houses/hotels (always visible) */}
+                <OwnedHouses
+                    size={topSize}
+                    rectForHouse={(ti: number) => propertyRectForHouse(ti, topSize, pathDirection, indexRotation)}
+                    players={players}
+                />
                 {/* Optional ground receiver removed to avoid large wedges on some devices */}
                 <Suspense fallback={null}>
                     <ClickableBoardPlane
@@ -3445,6 +3500,26 @@ function Board3D({
                     rectForTile={(ti: number) => propertyRectFor(ti, topSize, pathDirection, indexRotation)}
                 />
             </Canvas>
+            {/* Buy / Sell House Modals */}
+            <BuyHouseModal
+                open={buyHouseOpen}
+                tiles={buyableHouseTiles}
+                houses={(me as any)?.houses}
+                hotels={(me as any)?.hotels}
+                onSelect={(tileId: number) => {
+                    try { send?.({ type: 'buildHouse', spaceId: tileId } as any) } catch { }
+                }}
+                onClose={() => setBuyHouseOpen(false)}
+            />
+            <SellHouseModal
+                open={sellHouseOpen}
+                tiles={sellableHouseTiles}
+                houses={(me as any)?.houses}
+                onSelect={(tileId: number) => {
+                    try { send?.({ type: 'sellHouse', spaceId: tileId } as any) } catch { }
+                }}
+                onClose={() => setSellHouseOpen(false)}
+            />
             {isSelectingTradePlayer && fullGameState && (
 
                 <PlayerSelectionModal
@@ -3582,7 +3657,7 @@ function Board3D({
                         <button className={'no-style modernButton'} style={{
                             width: isFullscreen ? 40 * 1.5 : 40,
                             height: isFullscreen ? 40 * 1.5 : 40,
-                        }}>
+                        }} onClick={() => setBuyHouseOpen(true)}>
                             <img src={BuyHouseIcon.src} alt="Ev Al" className="icon" style={{
                                 width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
                             }} />
@@ -3622,7 +3697,7 @@ function Board3D({
                         <button className={'no-style modernButton'} style={{
                             width: isFullscreen ? 40 * 1.5 : 40,
                             height: isFullscreen ? 40 * 1.5 : 40,
-                        }}>
+                        }} onClick={() => setSellHouseOpen(true)}>
                             <img src={SellHouseIcon.src} alt="Ev Sat" className="icon" style={{
                                 width: isFullscreen ? 24 * 1.5 : 24, height: 'auto'
                             }} />

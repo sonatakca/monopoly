@@ -66,7 +66,7 @@ const HouseModel = ({ color = '#22c55e', ...props }) => {
   }, [geom])
   return (
     <group {...props}>
-      <mesh castShadow receiveShadow geometry={processedGeom}>
+      <mesh castShadow receiveShadow geometry={processedGeom} rotation={[-Math.PI / 2, 0, 0]}>
         <meshStandardMaterial color={color} metalness={0.15} roughness={0.55} />
       </mesh>
     </group>
@@ -84,7 +84,7 @@ const HotelModel = ({ color = '#ef4444', ...props }) => {
   }, [geom])
   return (
     <group {...props}>
-      <mesh castShadow receiveShadow geometry={processedGeom}>
+      <mesh castShadow receiveShadow geometry={processedGeom} rotation={[-Math.PI / 2, 0, 0]}>
         <meshStandardMaterial color={color} metalness={0.15} roughness={0.55} />
       </mesh>
     </group>

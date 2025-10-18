@@ -93,8 +93,6 @@ export default function OwnedSemiCircles({
     } catch { return [] }
   }, [map, ownedTiles])
 
-  if (tiles.length === 0) return null
-
   // Cache gradient textures per color
   const gradientForColor = useMemo(() => {
     const cache = new Map<string, THREE.Texture>()
@@ -164,8 +162,8 @@ export default function OwnedSemiCircles({
       const prevColor = prevColors[ti]
       if (prevColor && prevColor !== newColor) {
         outAnimsRef.current[ti] = { start: now, color: prevColor }
-        // Delay the incoming animation until outgoing finishes
-        appearStartRef.current[ti] = now + 520
+        // Start incoming immediately to crossfade with outgoing (smoother)
+        appearStartRef.current[ti] = now
       }
     }
     // Update prev snapshots
@@ -174,11 +172,9 @@ export default function OwnedSemiCircles({
   }, [tiles])
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
-  const easeOutBack = (x: number) => {
-    const c1 = 1.70158, c3 = c1 + 1
-    const t = x - 1
-    return 1 + c3 * (t * t * t) + c1 * (t * t)
-  }
+  const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3)
+  const easeInCubic = (x: number) => x * x * x
+  const easeInOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
 
   useFrame(() => {
     const now = performance.now()
@@ -195,11 +191,11 @@ export default function OwnedSemiCircles({
         continue
       }
       const p = clamp01(raw)
-      const s = 0.8 + 0.2 * easeOutBack(p)
+      const s = 0.85 + 0.15 * easeOutCubic(p)
       const g = groupRefs.current[ti]
       const m = matRefs.current[ti]
       if (g) g.scale.setScalar(s)
-      if (m) m.opacity = 0.15 + 0.85 * p
+      if (m) m.opacity = easeInOutCubic(p)
     }
     // Animate outgoing (reverse) and clean up after finish
     const outKeys = Object.keys(outAnimsRef.current)
@@ -210,9 +206,9 @@ export default function OwnedSemiCircles({
       const p = clamp01((now - rec.start) / duration)
       const g = outGroupRefs.current[ti]
       const m = outMatRefs.current[ti]
-      const s = 1.0 - 0.2 * p
+      const s = 1.0 - 0.15 * easeInOutCubic(p)
       if (g) g.scale.setScalar(Math.max(0.0001, s))
-      if (m) m.opacity = 1.0 - p
+      if (m) m.opacity = 1.0 - easeInOutCubic(p)
       if (p >= 1) {
         delete outAnimsRef.current[ti]
         if (outGroupRefs.current[ti]) outGroupRefs.current[ti] = null
@@ -253,9 +249,8 @@ export default function OwnedSemiCircles({
 
         const radius = tx.radius ?? Math.min(sx, sz) * 0.40
 
-        // Final placement and rotation
-        // Slight epsilon above computed placement to avoid any z-fighting with board plane
-        const pos: [number, number, number] = [cx, cy + height / 2 + 0.001, cz]
+        // Final placement and rotation — match edit tool exactly
+        const pos: [number, number, number] = [cx, cy + height / 2, cz]
         const rotX = tx.rotX ?? DEFAULT_STYLE.rotX
         const rotY = tx.rotY ?? 0
         const rotZ = tx.rotZ ?? DEFAULT_STYLE.rotZ
