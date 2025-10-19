@@ -23,8 +23,8 @@ export default function SellHouseModal({
   const houseCount = useMemo(() => houses || {}, [houses])
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   return (
-    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', zIndex: 70, pointerEvents: 'auto' }}>
-      <div style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', borderRadius: 12, width: 520, maxWidth: '96vw', boxShadow: '0 14px 48px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', zIndex: 70, pointerEvents: 'none' }}>
+      <div style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', borderRadius: 12, width: 520, maxWidth: '96vw', boxShadow: '0 14px 48px rgba(0,0,0,0.5)', pointerEvents: 'auto' }}>
         <div style={{ padding: 12, borderBottom: '1px solid rgba(255,255,255,0.14)', fontWeight: 900 }}>Ev Sat</div>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 360, overflow: 'auto' }}>
           {list.length ? list.map((id) => {

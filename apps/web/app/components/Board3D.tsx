@@ -3506,6 +3506,19 @@ function Board3D({
                 tiles={buyableHouseTiles}
                 houses={(me as any)?.houses}
                 hotels={(me as any)?.hotels}
+                owned={(me as any)?.properties}
+                cash={(me as any)?.cash}
+                onConfirm={(plan: Record<number, number>) => {
+                    try {
+                        for (const [idStr, n] of Object.entries(plan || {})) {
+                            const id = Number(idStr)
+                            const times = Math.max(0, Number(n) || 0)
+                            for (let i = 0; i < times; i++) {
+                                send?.({ type: 'buildHouse', spaceId: id } as any)
+                            }
+                        }
+                    } catch { }
+                }}
                 onSelect={(tileId: number) => {
                     try { send?.({ type: 'buildHouse', spaceId: tileId } as any) } catch { }
                 }}
