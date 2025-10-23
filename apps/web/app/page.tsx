@@ -626,7 +626,7 @@ export default function Home() {
           setTopNotice(`${fromName} takas teklif etti — ${Math.ceil((d.endsAt - Date.now()) / 1000)} sn içinde yanıtla`)
           clearTopNotice(30_500)
         }
-      } catch {}
+      } catch { }
     }
     const onTradeTimerEnd = (e: any) => {
       try {
@@ -640,7 +640,7 @@ export default function Home() {
           setTopNotice('Takas teklifine zamanında yanıt verilmedi')
           clearTopNotice(2500)
         }
-      } catch {}
+      } catch { }
     }
     window.addEventListener('monopoly:tradeTimerStart', onTradeTimerStart as any)
     window.addEventListener('monopoly:tradeTimerEnd', onTradeTimerEnd as any)
@@ -1200,25 +1200,25 @@ export default function Home() {
     return () => window.removeEventListener('monopoly:routeActive', handler as any)
   }, [])
   // Pass GO: show immediate credit during hop (only if server says this move earns GO)
-  useEffect(() => {
-    const onPassGo = (e: any) => {
-      try {
-        const pid = e?.detail?.playerId as string
-        const amt = (board as any).goAmount || 200
-        const pv = (state as any)?.pendingVisit
-        const allowed = !!pv && pv.playerId === pid && pv.passedGo === true
-        if (!allowed) return
-        // Animate now
-        moneyFxRef.current?.spawn({ kind: 'fromBank', toId: pid, amount: amt })
-        // Advance our baseline snapshot by GO amount so later state diff only shows residuals
-        const curSnap = prevCashRef.current
-        const baseline = (curSnap[pid] != null) ? curSnap[pid]! : ((state as any)?.players?.[pid]?.cash ?? 0)
-        prevCashRef.current = { ...curSnap, [pid]: baseline + amt }
-      } catch { }
-    }
-    window.addEventListener('monopoly:passGo', onPassGo as any)
-    return () => window.removeEventListener('monopoly:passGo', onPassGo as any)
-  }, [state?.pendingVisit, state?.players])
+  // useEffect(() => {
+  //   const onPassGo = (e: any) => {
+  //     try {
+  //       const pid = e?.detail?.playerId as string
+  //       const amt = (board as any).goAmount || 200
+  //       const pv = (state as any)?.pendingVisit
+  //       const allowed = !!pv && pv.playerId === pid && pv.passedGo === true
+  //       if (!allowed) return
+  //       // Animate now
+  //       moneyFxRef.current?.spawn({ kind: 'fromBank', toId: pid, amount: amt })
+  //       // Advance our baseline snapshot by GO amount so later state diff only shows residuals
+  //       const curSnap = prevCashRef.current
+  //       const baseline = (curSnap[pid] != null) ? curSnap[pid]! : ((state as any)?.players?.[pid]?.cash ?? 0)
+  //       prevCashRef.current = { ...curSnap, [pid]: baseline + amt }
+  //     } catch { }
+  //   }
+  //   window.addEventListener('monopoly:passGo', onPassGo as any)
+  //   return () => window.removeEventListener('monopoly:passGo', onPassGo as any)
+  // }, [state?.pendingVisit, state?.players])
   // Track visibility of the fullscreen 3D Property Card modal (emitted by Board3D)
   const [propertyModalVisible, setPropertyModalVisible] = useState(false)
   useEffect(() => {
@@ -1272,9 +1272,9 @@ export default function Home() {
     const was = prevTurnPlayerRef.current
     prevTurnPlayerRef.current = currentTurnId
     if (currentTurnId && currentTurnId === meId && was !== meId) {
-      try { setDicePlaying(false) } catch {}
-      try { setAnyAnimatingRoute(false) } catch {}
-      try { setSuppressButtons(false) } catch {}
+      try { setDicePlaying(false) } catch { }
+      try { setAnyAnimatingRoute(false) } catch { }
+      try { setSuppressButtons(false) } catch { }
     }
   }, [state?.turnIndex, state?.order, meId])
 
@@ -1283,9 +1283,9 @@ export default function Home() {
       if (document.visibilityState !== 'visible') return
       const currentTurnId = state?.order?.[state?.turnIndex ?? 0] || null
       if (currentTurnId && currentTurnId === meId) {
-        try { setDicePlaying(false) } catch {}
-        try { setAnyAnimatingRoute(false) } catch {}
-        try { setSuppressButtons(false) } catch {}
+        try { setDicePlaying(false) } catch { }
+        try { setAnyAnimatingRoute(false) } catch { }
+        try { setSuppressButtons(false) } catch { }
       }
     }
     document.addEventListener('visibilitychange', onVisible)
@@ -1619,7 +1619,7 @@ export default function Home() {
 
         {!getDevFlag('disable3D') && (
           <>
-              <Board3D
+            <Board3D
               // players={effectivePlayers}
               // order={effectiveOrder}
               boardImageUrl="/board.png"
@@ -1647,8 +1647,8 @@ export default function Home() {
 
               isFullscreen={isFullscreen}
               onToggleFullscreen={toggleFullscreen}
-              onOpenTradeModal={hideTradeButton ? () => {} : () => setIsSelectingTradePlayer(true)}
-              onInitiateTrade={hideTradeButton ? () => {} : openTrade}
+              onOpenTradeModal={hideTradeButton ? () => { } : () => setIsSelectingTradePlayer(true)}
+              onInitiateTrade={hideTradeButton ? () => { } : openTrade}
               tradeActive={tradeState.isOpen}
               tradePlayerIds={me ? [me.id, tradeState.otherPlayerId] : []}
               tradeInitialMoneyToGive={tradePrefill?.moneyToGive}
@@ -1814,7 +1814,7 @@ export default function Home() {
                 isFullscreen={isFullscreen}
                 // Show 15s server timer to the recipient
                 expiresAt={(tradeTimer && tradeTimer.to === meId) ? tradeTimer.endsAt : undefined}
-                onDecline={(p) => { try { send({ type: 'declineTrade', proposal: p } as any) } catch {}; setTradeProposal(null) }}
+                onDecline={(p) => { try { send({ type: 'declineTrade', proposal: p } as any) } catch { }; setTradeProposal(null) }}
                 onCounter={(p) => {
                   // Map into viewer-centric initial values
                   const isRecipient = meId === p.to
@@ -1829,7 +1829,7 @@ export default function Home() {
                   const otherId = isRecipient ? (p.from as string) : (p.to as string)
                   openTrade(otherId)
                 }}
-                onAccept={(p) => { try { send({ type: 'acceptTrade', proposal: p } as any) } catch {}; setTradeProposal(null) }}
+                onAccept={(p) => { try { send({ type: 'acceptTrade', proposal: p } as any) } catch { }; setTradeProposal(null) }}
               />
             )}
             {/* Pending action card: show after any hop completes */}

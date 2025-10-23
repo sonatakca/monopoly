@@ -186,7 +186,7 @@ button.modernButton, div.modernButtonContainer {
     background: rgba(0,0,0,0.05);
     width:  40px;
     height:  40px;
-    border-radius: 50%;
+    border-radius: 20px;
     box-sizing: border-box;
     transition:  transform .3s;
     cursor:  pointer;
@@ -195,10 +195,83 @@ button.modernButton, div.modernButtonContainer {
     justify-content: center;
 }
  button.modernButton:hover, div.modernButtonContainer:hover {
-    transform: scale(1.125);
+    transform: scale(1.062);
 }
 button.modernButton:focus-visible, div.modernButtonContainer:focus-visible {
   outline: 2px solid rgba(0, 0, 0, 0.5);
+}
+
+/* Volume button hover-expand behavior */
+
+/* div.volumeControl {
+  width: 500px;
+} */
+button#volume.no-style.modernButton {
+  position: relative;
+  width: 40px; /* keep circular shape */
+  height: 40px;
+  overflow: visible; /* allow slider to spill out */
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start; /* pin icon to the left */
+  padding-left: 0; /* no left padding so icon hugs left edge */
+  transition: width .3s ease, transform .3s;
+  cursor: default;
+}
+
+button#volume.no-style.modernButton:hover{
+  position: relative;
+  width: 140px; /* keep circular shape */
+  height: 40px;
+  overflow: visible; /* allow slider to spill out */
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start; /* keep icon left while expanding */
+  padding-left: 0;
+  transition: width .3s ease, transform .3s;
+}
+button#volume.no-style.modernButton .volume-slider-inline {
+  position: absolute;
+  left: 44px; /* show to the right of circle with small gap */
+  top: 50%;
+  transform: translateY(-50%);
+  height: 24px; /* give it height so centering is correct */
+  display: flex; /* center the 3px track and 12px knob vertically */
+  align-items: center;
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: width .3s ease, opacity .3s ease;
+}
+button#volume.no-style.modernButton:hover .volume-slider-inline {
+  width: 80px; /* reveal slider */
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+/* ——— Close-delay behavior for the volume control ——— */
+:root { --close-delay: 3s; }
+
+/* Base: no delay */
+button#volume.no-style.modernButton{
+  transition: width .5s ease, transform .3s;
+}
+button#volume.no-style.modernButton .volume-slider-inline{
+  transition: width .5s ease, opacity .3s ease;
+}
+
+/* Opening (hover): no delay */
+button#volume.no-style.modernButton:hover .volume-slider-inline{
+  transition-delay: 0s, 0s;
+}
+
+/* Closing: delay only if we previously finished opening */
+button#volume.no-style.modernButton.open-ready:not(:hover){
+  transition-delay: var(--close-delay), 0s;              /* delay width close */
+}
+button#volume.no-style.modernButton.open-ready:not(:hover) .volume-slider-inline{
+  transition-delay: var(--close-delay), var(--close-delay); /* delay width + opacity */
 }
 button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2){ 
     display: none;
@@ -209,6 +282,8 @@ button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2)
 [fullscreen] button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2) {
     display: inline-block;
 }
+
+
 
 .tippy-box[data-theme~='custom'] {
   background-color: #333;
@@ -225,6 +300,34 @@ button.modernButton svg:nth-child(2), div.modernButtonContainer svg:nth-child(2)
 
 .tippy-box[data-theme~='custom'] .tippy-arrow {
   color: #333;
+}
+
+.tippy-box[data-theme~='transparent']{
+  /* translucent fill so the blur is visible */
+  background: rgba(0,0,0,0.05);
+  color: black;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  border-radius: 8px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 999;
+
+  /* blur what's behind the tooltip */
+  -webkit-backdrop-filter: blur(25px);
+  backdrop-filter: blur(25px);
+
+  /* nice framing */
+}
+
+/* Arrow styling (Tippy v6 uses `color` on .tippy-arrow) */
+.tippy-box[data-theme~='transparent'] > .tippy-arrow{
+  color: rgba(30,30,30,0.35);
+}
+/* If your version uses ::before for the arrow, keep this too */
+.tippy-box[data-theme~='transparent'] > .tippy-arrow::before{
+  background: rgba(30,30,30,0.35);
 }
 
 input {
@@ -274,7 +377,7 @@ input::placeholder { color: color-mix(in oklab, var(--muted) 85%, transparent) }
   border: 0px solid #fff;
   height: 20px;
   width: 20px;
-  border-radius: 50%;
+  border-radius: 50px;
   cursor: pointer;
   margin-top: -6px;
   /* Use the CSS variable for the background color */

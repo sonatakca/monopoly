@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="app-body">
         {/* Preload metallic layer once for the whole app */}
         <PreloadMetallic />
+        {/* Background music controls now live in Board3D toolbar */}
         <header className="app-header">
           <div className="container app-navbar">
             <div className="brand">

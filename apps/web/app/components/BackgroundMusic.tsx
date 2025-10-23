@@ -202,6 +202,34 @@ export default function BackgroundMusic({ mode = 'floating' }: Props) {
     updateVolumeFromClientX(e.clientX);
   }, [updateVolumeFromClientX]);
 
+  // Attach hover/transition handlers to the containing volume button to manage
+  // the `.open-ready` class for delayed close only after fully opened.
+  useEffect(() => {
+    if (mode !== 'inline') return;
+    const el = sliderRef.current;
+    if (!el) return;
+    const btn = el.closest('button#volume') as HTMLButtonElement | null;
+    if (!btn) return;
+
+    const onEnter = () => {
+      try { btn.classList.remove('open-ready'); } catch { }
+    };
+    const onTransitionEnd = (ev: Event) => {
+      const e = ev as TransitionEvent;
+      if (e.target !== btn) return;
+      if (e.propertyName !== 'width') return;
+      try {
+        if (btn.matches(':hover')) btn.classList.add('open-ready');
+      } catch { }
+    };
+    btn.addEventListener('mouseenter', onEnter);
+    btn.addEventListener('transitionend', onTransitionEnd);
+    return () => {
+      btn.removeEventListener('mouseenter', onEnter);
+      btn.removeEventListener('transitionend', onTransitionEnd);
+    };
+  }, [mode]);
+
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       if (!draggingRef.current) return;
@@ -379,6 +407,7 @@ export default function BackgroundMusic({ mode = 'floating' }: Props) {
           arrow={false}
           appendTo={() => document.querySelector('#game') || document.body}
           theme="custom"
+          delay={[800, 0]}
         >
           <div
             onClick={toggleMute}
@@ -428,7 +457,7 @@ export default function BackgroundMusic({ mode = 'floating' }: Props) {
             arrow={false}
             appendTo={() => document.querySelector('#game') || document.body}
             theme="transparent"
-            delay={[800, 0]}
+            delay={[300, 0]}
           >
             {sliderTrack}
           </Tippy>
