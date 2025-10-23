@@ -1036,6 +1036,35 @@ export default function Home() {
   const seededInitialFromFirstState = useRef(false)
   const localRollPending = useRef(false)
 
+  // Dice roll SFX pool (randomized on each throw)
+  const DICE_SOUNDS = useMemo(() => [
+    '/sound-effects/dice-roll/dice-roll-sound(1).mp3',
+    '/sound-effects/dice-roll/dice-roll-sound(2).mp3',
+    '/sound-effects/dice-roll/dice-roll-sound(3).mp3',
+    '/sound-effects/dice-roll/dice-roll-sound(4).mp3',
+    '/sound-effects/dice-roll/dice-roll-sound(5).mp3',
+  ], [])
+  const playDiceSfx = useCallback(() => {
+    try {
+      const pick = DICE_SOUNDS[(Math.random() * DICE_SOUNDS.length) | 0]
+      const a = new Audio(pick)
+      a.volume = 0.85
+      // Fire and forget; ignore promise rejections from autoplay policies
+      const p = a.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
+  }, [DICE_SOUNDS])
+
+  // Money-in SFX (play only for the receiver)
+  const playMoneyInSfx = useCallback(() => {
+    try {
+      const a = new Audio('/sound-effects/money-in/money-in-sound.mp3')
+      a.volume = 0.9
+      const p = a.play()
+      if (p && typeof p.catch === 'function') p.catch(() => { })
+    } catch { }
+  }, [])
+
   // Seed lastSeenKey from the very first server state (if it already has dice),
   // so we don't auto-play on initial load/refresh.
   useEffect(() => {
@@ -1054,6 +1083,7 @@ export default function Home() {
       localRollPending.current = false
       setRollTick(t => t + 1)
       setDicePlaying(true)
+      playDiceSfx()
     }
   }, [state?.lastDice])
   // Hold auction overlay visibility and button suppression for +2s after server finishes
@@ -1154,7 +1184,13 @@ export default function Home() {
   const flushTransfers = () => {
     const list = moneyQueueRef.current
     if (!list.length) return
-    list.forEach(tr => moneyFxRef.current?.spawn(tr))
+    list.forEach(tr => {
+      // Only the receiver hears money-in
+      if ((tr as any).toId && (tr as any).toId === meId) {
+        if (tr.kind === 'fromBank' || tr.kind === 'playerToPlayer') playMoneyInSfx()
+      }
+      moneyFxRef.current?.spawn(tr)
+    })
     moneyQueueRef.current = []
   }
   // If landed on an unowned buyable tile, show only auction instead of end-turn
@@ -1424,7 +1460,12 @@ export default function Home() {
     // Defer until actions complete: while animating route or while a card is pending
     const shouldDefer = !!animatingMyMove || hasPendingCard
     if (shouldDefer) enqueueTransfers(transfers)
-    else transfers.forEach(tr => moneyFxRef.current?.spawn(tr))
+    else transfers.forEach(tr => {
+      if ((tr as any).toId && (tr as any).toId === meId) {
+        if (tr.kind === 'fromBank' || tr.kind === 'playerToPlayer') playMoneyInSfx()
+      }
+      moneyFxRef.current?.spawn(tr)
+    })
   }, [state, cardRects, animatingMyMove, hasPendingCard])
 
   // Flush queued money once both: no route animation and no pending card
