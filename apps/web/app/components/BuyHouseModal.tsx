@@ -70,6 +70,8 @@ export default function BuyHouseModal({
   const totalPlanCost = useMemo(() => {
     return Object.entries(plan).reduce((sum, [id, n]) => sum + costOf(Number(id)) * (Number(n) || 0), 0)
   }, [plan])
+  const planCount = useMemo(() => Object.values(plan).reduce((a, b) => a + (b || 0), 0), [plan])
+  const remainingCash = useMemo(() => (cash != null ? cash - totalPlanCost : null), [cash, totalPlanCost])
 
   // Cache color -> tile ids mapping
   const groupTilesByColor: Record<string, number[]> = useMemo(() => {
@@ -107,7 +109,20 @@ export default function BuyHouseModal({
       <div style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', borderRadius: 12, width: 600, maxWidth: '96vw', boxShadow: '0 14px 48px rgba(0, 0, 0, 0.5)', pointerEvents: 'auto', margin: '0, auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottom: '1px solid rgba(255,255,255,0.14)' }}>
           <div style={{ fontWeight: 900 }}>Ev Al</div>
-          <button
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {cash != null && (
+              <>
+                <div title="Toplam maliyet" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 900 }}>
+                  <MonopolyMoney size={16} color="#ffd54f" />
+                  <span>Toplam: {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(totalPlanCost)}</span>
+                </div>
+                <div title="Kalan para" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 900, color: (remainingCash ?? 0) >= 0 ? '#34d399' : '#f87171' }}>
+                  <MonopolyMoney size={16} color={(remainingCash ?? 0) >= 0 ? '#34d399' : '#f87171'} />
+                  <span>Kalan: {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.max(0, remainingCash || 0))}</span>
+                </div>
+              </>
+            )}
+            <button
             onClick={() => {
               if (onConfirm) {
                 onConfirm(plan)
@@ -119,7 +134,7 @@ export default function BuyHouseModal({
               }
               onClose()
             }}
-            disabled={(Object.values(plan).reduce((a, b) => a + (b || 0), 0) <= 0) || (cash != null && totalPlanCost > cash)}
+            disabled={(planCount <= 0) || (cash != null && totalPlanCost > cash)}
             style={{
               background: 'linear-gradient(135deg, #22c55e, rgba(255,255,255,0.07) 70%)',
               border: '1px solid rgba(255,255,255,0.14)',
@@ -127,10 +142,11 @@ export default function BuyHouseModal({
               padding: '6px 12px',
               borderRadius: 10,
               fontWeight: 900,
-              cursor: (Object.values(plan).reduce((a, b) => a + (b || 0), 0) > 0 && !(cash != null && totalPlanCost > cash)) ? 'pointer' : 'not-allowed',
-              opacity: (Object.values(plan).reduce((a, b) => a + (b || 0), 0) > 0 && !(cash != null && totalPlanCost > cash)) ? 1 : 0.5
+              cursor: (planCount > 0 && !(cash != null && totalPlanCost > cash)) ? 'pointer' : 'not-allowed',
+              opacity: (planCount > 0 && !(cash != null && totalPlanCost > cash)) ? 1 : 0.5
             }}
           >Onayla</button>
+          </div>
         </div>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 360, overflowY: 'auto', overflowX: 'auto' }}>
           {groups.length ? groups.map(({ color: c, tiles }) => (
@@ -185,7 +201,8 @@ export default function BuyHouseModal({
                       const planned = plan[id] || 0
                       const filled = i < count
                       const isNext = i === count
-                      const eligible = isTileEligibleNext(id) && buyableSet.has(id)
+                      // Eligibility is evaluated live with current plan; do not gate by initial buyable list
+                      const eligible = isTileEligibleNext(id)
                       const canAddBase = isNext && eligible
                       const remaining = cash != null ? (cash - totalPlanCost) : Infinity
                       const canAfford = remaining >= costOf(id)

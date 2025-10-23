@@ -36,6 +36,7 @@ import { PLAYER_DOTS } from './playerColors'
 import TradeOverlay from './TradeOverlay';
 import { FaHouseLock } from "react-icons/fa6";
 import { MdSell } from "react-icons/md";
+import BackgroundMusic from './BackgroundMusic'
 
 
 
@@ -3578,6 +3579,8 @@ function Board3D({
                     zIndex: 60,
                     pointerEvents: 'auto',
                     display: 'flex',
+                    justifyContent: 'flex-start',
+                    alignItems: 'center',
                     gap: 8,
                     background: 'transparent',
                     border: '0px solid rgba(255,255,255,0.16)',
@@ -3591,7 +3594,8 @@ function Board3D({
                     offset={isFullscreen ? [-70, -50] : [65, -50]}
                     arrow={false}
                     appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
+                    theme="custom"
+                    delay={[500, 0]}>
                     <button id='fullscreenButton' className={'no-style modernButton'} onClick={onToggleFullscreen}>
                         {!isFullscreen ?
                             <svg viewBox="0 0 24 24">
@@ -3615,31 +3619,37 @@ function Board3D({
                     zIndex: 60,
                     pointerEvents: 'auto',
                     display: 'flex',
+                    flexDirection: 'row',
+                    justifyContent: 'flex-start',
+                    alignItems: 'center',
                     gap: 8,
                     background: 'transparent',
                     border: '0px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: 40,
+                    borderRadius: '20px',
+                    width: 'auto',
                     height: 40,
+                    overflow: 'visible',
 
                     backdropFilter: getDevFlag('disableBackdropBlur') ? 'none' : 'blur(25px)'
                 }}
             >
-                <Tippy content={'Seçenekler'}
+                {/* <Tippy content={'Sesi Kapat'}
                     followCursor={true}
                     plugins={[followCursor]}
                     offset={[70, -50]}
                     arrow={false}
                     appendTo={() => document.querySelector('#game') || document.body}
-                    theme="custom">
-                    <button id='optionsButton' className={'no-style modernButton'}>
-                        <svg viewBox="0 0 24 24">
+                    theme="custom"> */}
+                <button id='volume' className={'no-style modernButton'} style={{}}>
+                    {/* <svg viewBox="0 0 24 24">
 
                             <path d="M10 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0zm0 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0z" />
-                        </svg>
+                        </svg> */}
 
-                    </button>
-                </Tippy>
+                    <BackgroundMusic mode="inline" />
+
+                </button>
+                {/* </Tippy> */}
             </div>
 
             {showTurnActions && canBuyHouseAny && (
